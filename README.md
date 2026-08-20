@@ -155,14 +155,25 @@ and restart.
 
 ### 4. Publish on the tailnet
 
+Check what the node already publishes before claiming a port — `serve` replaces
+a handler on the same port and path without warning, and taking `/` on 443 from
+a service already there is a silent outage:
+
 ```bash
-tailscale serve --bg --https=443 127.0.0.1:8787
-tailscale serve status        # prints the https://…ts.net URL used below
+sudo tailscale serve status   # empty output means 443 is free
+```
+
+If 443 is free, use it. If something already holds it, mount on another HTTPS
+port instead of sharing the path:
+
+```bash
+sudo tailscale serve --bg --https=8443 127.0.0.1:8787
+sudo tailscale serve status   # prints the https://…ts.net URL used below
 ```
 
 This requires HTTPS enabled for the tailnet (admin console > DNS). The
 certificate is real and issued automatically, so the bearer token never travels
-in the clear.
+in the clear. Serve config survives reboots, so this is a one-time command.
 
 ### Connect a client
 
