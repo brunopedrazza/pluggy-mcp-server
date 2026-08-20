@@ -117,12 +117,51 @@ sitting on it.
 A R$3,000 purchase split into 12 installments in March is either R$3,000
 (accrual view) or R$250 (cash view). Both are legitimate, and they differ by 12x.
 
-`CreditCardBills` only carries the bill header (`dueDate`, `billClosingDate`,
-`totalAmount`) — the line items live in `transactions`, linked through
-`creditCardMetadata.billId`. So: `list_transactions` uses the purchase date and
-gains `installment` and `purchase_total` columns, while `list_credit_card_bills`
-shows what actually lands on each bill. Both views coexist, and the installment
-appears on the row itself, so the two views cannot be conflated unnoticed.
+Pluggy's `Transaction.date` on a card is the **posting** date, so the raw stream
+is already the cash view: an installment of a year-old purchase carries this
+month's date, and connectors post the whole installment batch on one day near
+the closing date. Sorting and filtering therefore run on the posting date, which
+is the only date every row has.
+
+The purchase view is grafted on rather than substituted, through three columns:
+
+- `data_compra` — `creditCardMetadata.purchaseDate`, printed only when it
+  differs from `date`. Sparse on purpose: a full date column on every row of a
+  year of statements is real token cost, and its presence is exactly the signal
+  that the two views diverge on that row. Empty therefore means "same as
+  `date`", which the tool description and the instructions both state, because
+  the fallback rule has to be unambiguous for a total to be correct.
+- `fatura` — the due date of the bill the row landed on, resolved from
+  `creditCardMetadata.billId` through `list_credit_card_bills`. The uuid itself
+  is never printed: it costs 36 characters a row and joins to nothing a person
+  recognises, whereas the due date is already the key the bill tool prints.
+  Falls back to `billForecastDate` while a bill is still open, rendered
+  `~YYYY-MM`. Closed bills are solid — filtering by due date reproduces the
+  bank's own total on 12 of 12 measured bills — but forecasts are connector
+  convention and disagree across banks: one card labels the cycle closing in
+  August `~2026-08`, another labels the same bill `~2026-09` by its due month,
+  and one pre-posts instalments ten months out while the others show none. They
+  are surfaced rather than normalised, because normalising would mean inferring
+  each bank's convention and printing the inference as data. The tilde was added after the filter merged the bill due
+  `2026-08-05` with the open one forecast `2026-08` on a prefix comparison,
+  returning a total belonging to neither. Marking the forecast makes the two
+  namespaces impossible to conflate, in the column and in `matchesBill` alike.
+- `parc` / `total_compra` — the installment and the whole purchase. Measured on
+  the real connectors, `totalAmount` comes back null on every installment row,
+  so `total_compra` is usually empty; the instructions say so rather than
+  leaving the model to read an empty column as zero.
+
+`list_transactions({ bill })` closes the loop: `CreditCardBills` carries only the
+header, so without a filter on `fatura` the bill total is a number with nothing
+behind it. With it, the bill tool gives the header and the transaction tool the
+line items.
+
+They still will not reconcile exactly. `financeCharges` — interest, late fees,
+annuity — is billed directly and never appears as a transaction, so it is
+surfaced as `charges` / `charge_types` to explain the bulk of any gap, and the
+tool description says plainly that a residual gap can remain. An approximate
+reconciliation labelled as approximate is useful; one presented as exact is a
+lie the model would have no way to detect.
 
 ## 10. Mandatory bearer token, loopback bind
 
@@ -280,6 +319,17 @@ spending. `type` is the field that is actually consistent, so it drives the sign
 `DEBIT` is always rendered negative. The result is coherent double-entry - paying
 a card bill is a debit on the bank and a credit on the card, which cancel - so
 summing everything yields true spending.
+
+**The magnitude is `amountInAccountCurrency`, not `amount`.** `amount` is
+denominated in the currency of the purchase, so a Brazilian card carrying a
+handful of USD and ARS rows reports those as though the figure were reais. The
+error runs both ways and therefore never shows up as a consistent bias worth
+questioning: against the real value, a dollar charge lands roughly five times too
+low and a peso charge hundreds of times too high. A card with one foreign trip on
+it can report close to double its true volume. Every BRL row carrying the field
+agrees with `amount` to the cent, so preferring it is safe as well as correct,
+and `valor_orig` keeps the original charge visible for reconciliation without
+ever entering a sum.
 
 ### Pluggy uses two date conventions and does not distinguish them
 

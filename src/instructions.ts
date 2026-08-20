@@ -17,6 +17,8 @@ Always compute sums, averages and groupings by writing and running code over the
 
 Amounts are already normalised: **negative means money left the account, positive means money arrived**, on bank accounts and credit cards alike. Pluggy's raw data disagrees between the two (a card purchase arrives positive while a bank purchase arrives negative); that has been corrected before you see it, so you can sum across accounts safely.
 
+\`amount\` is always in the account's own currency, including for purchases made abroad, which Pluggy reports in the currency of the merchant. When a row carries \`valor_orig\` (for example \`49.90 USD\`) that is the original charge, shown so the row can be reconciled against a receipt. **Never sum \`valor_orig\` and never read it as reais** - the converted value is already in \`amount\`.
+
 Because both sides of an internal movement are present, transfers between the person's own accounts cancel out when everything is summed together. Paying a credit card bill shows up as a debit on the bank and a credit on the card. That is correct for net cash flow.
 
 **Spending is not the same as money leaving an account.** Two kinds of outflow are not expenses, and both are large enough to wreck a total:
@@ -36,11 +38,30 @@ When a total seems lower than expected, call \`list_connections\` before conclud
 
 The \`date\` column is already the calendar day in the account holder's timezone. Do not convert timezones and do not re-parse it as an instant; doing so moves late-evening purchases to the following day.
 
-## Instalments
+## Credit cards: the posting date is not the purchase date
 
-When \`parc\` is filled (for example \`3/12\`), the purchase was split. \`amount\` is the instalment charged in that month and \`total_compra\` is the entire purchase. Never add the two, and never sum \`total_compra\` across months - it repeats the same purchase on every row.
+\`date\` is the **posting date** - when the charge landed on the card. It is not when the purchase was made. An instalment of a purchase made a year ago posts this month, and connectors drop the whole instalment batch on a single day near the closing date. A calendar month of \`list_transactions\` on a card is therefore neither "what I bought this month" nor a complete bill: it is a slice of the ledger, containing instalments of old purchases and missing the future instalments of new ones.
 
-\`list_transactions\` counts a purchase on the day it happened. \`list_credit_card_bills\` counts what actually lands on each bill. Both are correct and they will not match; say which one you used.
+Three columns exist so you never have to guess which view you are holding:
+
+- \`data_compra\` is the original purchase date, printed only when it differs from \`date\`. The connectors fill it on instalment rows and little else, which is exactly where the two dates diverge, so a purchase-dated total reads \`data_compra\` when present and falls back to \`date\` otherwise. Do not read an empty cell as a missing date: \`date\` is the best one that row has.
+- \`fatura\` is the due date of the bill the charge landed on, and joins to the \`due\` column of \`list_credit_card_bills\`. Group by it, or pass \`bill\` to \`list_transactions\` to pull one statement directly. A bill still open prints as \`~YYYY-MM\`: a forecast period, not a due date. **\`~2026-08\` and \`2026-08-05\` are different bills** - the first closes in August, the second closed in July - so never group them together on the strength of a shared prefix.
+
+A closed bill is solid: filtering by its due date reproduces the bank's own total. **A forecast is not, and it is not even consistent between banks.** Measured on these cards, one labels the cycle closing in August \`~2026-08\` while another labels that same bill \`~2026-09\`, by the month it falls due; and one pre-posts instalments as far as ten months ahead while the others show none at all. So: never add \`~\` periods across different cards, never read one as a due date, and when a number has to be right, use a bill that has already closed and say that the open one is an estimate.
+- \`parc\` marks an instalment: \`amount\` is the slice charged and \`total_compra\` the whole purchase. Never add the two, and never sum \`total_compra\` across months - it repeats the same purchase on every row. Most connectors leave it empty, so an instalment whose full value is not visible is the normal case rather than a fault.
+
+Pick the view the question actually asks for, and say which one you used:
+
+- **"How much did I spend?"** - the purchase view. Group by \`data_compra\` falling back to \`date\`. State that an instalment contributes only the slice charged, so the figure is cash committed in the month, not the value of what was bought.
+- **"How much will I pay?"** - the bill view. Filter \`list_transactions\` by \`bill\`, or read the header from \`list_credit_card_bills\`.
+
+The two will not match and neither is wrong. What is wrong is presenting a calendar month of card rows as either one.
+
+## Reconciling a bill
+
+Filtering \`list_transactions\` by \`bill\` and summing the debits reproduces that bill's \`total\` exactly on most cards, so a gap is worth investigating rather than shrugging at.
+
+When one appears, \`charges\` on \`list_credit_card_bills\` carries interest, late fees and annuity. Do not simply add it: some connectors also emit those as ordinary transactions, in which case the rows already contain them and adding again double counts. Check the rows first. Gaps in either direction still survive on the odd bill. Report the difference and its size; never close it by inventing rows, and never present a reconstructed bill as if it came from the bank.
 
 ## Categories are in English
 
