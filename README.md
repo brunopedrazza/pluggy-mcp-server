@@ -47,10 +47,14 @@ daily.
 ### 2. Check what Connector 200 actually returns
 
 ```bash
-cp .env.example .env   # fill in CLIENT_ID, CLIENT_SECRET and ITEM_IDS
 npm install
+npm run setup   # prompts for the credentials, writes .env with mode 0600
 npm run probe
 ```
+
+`npm run setup` masks the client secret while you type it, generates the MCP bearer
+token for you, and verifies the credentials against the Pluggy API before writing
+anything. Re-running it keeps your current values — press Enter to skip a prompt.
 
 The probe reports whether investments, credit card bills and loans are available
 on your connections, and validates date and category handling. It does **not**
