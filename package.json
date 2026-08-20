@@ -14,7 +14,7 @@
     "start": "node dist/http.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --experimental-strip-types --test test/**/*.test.ts"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.0.0",
