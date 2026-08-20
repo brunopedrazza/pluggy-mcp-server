@@ -30,10 +30,19 @@ individuals accessing their own data over the API.
 ### 1. Connect your banks (once, ~15 min)
 
 1. Create an account at [meu.pluggy.ai](https://meu.pluggy.ai) and connect your banks
-2. Create an account at [dashboard.pluggy.ai](https://dashboard.pluggy.ai)
-3. Create **one** application and copy its `Client ID` and `Client Secret`
-4. In that application, pick the **MeuPluggy** connector and authorize it with your Meu Pluggy login
-5. Copy the **Item ID** ("Copiar Item ID" button)
+2. Create an account at [dashboard.pluggy.ai](https://dashboard.pluggy.ai). This starts a
+   15-day trial, which you can ignore: Pluggy states you can still pull your data after
+   it expires
+3. **Before creating the application**, go to *Customize* and add the **MeuPluggy**
+   connector to your connector list. Skip this and it will not show up later
+4. Create a *Development Application* and copy its `Client ID` and `Client Secret`
+5. Open the *Demo* application and link your Meu Pluggy account through the MeuPluggy
+   OAuth authorization. **Repeat this once per connected bank** — Pluggy issues one item
+   per bank, not per account
+6. Copy the **Item ID** of each connection ("Copiar Item ID")
+
+Connector 200 acts as a proxy over the connections Meu Pluggy owns, and refreshes them
+daily.
 
 ### 2. Check what Connector 200 actually returns
 

@@ -16,9 +16,10 @@ Onboarding happens **outside this server**: you connect your banks in Meu Pluggy
 and authorize the MeuPluggy connector inside `dashboard.pluggy.ai`. There is no
 Pluggy Connect widget, no OAuth, and no HTTP callback in our code.
 
-The server is **item-agnostic**: it takes N `itemId`s and reads whatever is
-there. That works identically for the free Connector 200 and for a paid plan
-later, with no rewrite.
+Pluggy issues **one item per bank**, not per account, so anyone with more than
+one connected institution has several. The server is therefore **item-agnostic**:
+it takes N `itemId`s and reads whatever is there. That works identically for the
+free Connector 200 and for a paid plan later, with no rewrite.
 
 ## 2. Faithful mirror of banco.mcp.ai, no server-side aggregation
 
@@ -82,8 +83,9 @@ dump PII into the context window and the harness logs.
 
 ## 7. Non-blocking `refresh_connection`
 
-Pluggy auto-sync only exists for production applications (every 8/12/24h
-depending on plan), so data from Connector 200 may be stale. `PATCH /items/{id}`
+Connector 200 refreshes its connections **daily**, so data is never more than
+about a day old — but "yesterday" is not good enough for "how much did I spend
+today". `PATCH /items/{id}`
 triggers a sync and returns immediately; the model polls `list_connections` to
 see when it finished. If the item lands in `WAITING_USER_INPUT`, the tool returns
 an instruction to resolve the MFA challenge at `meu.pluggy.ai` — the server
