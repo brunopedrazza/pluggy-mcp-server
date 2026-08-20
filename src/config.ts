@@ -10,6 +10,13 @@ export type Config = {
   clientId: string
   clientSecret: string
   itemIds: string[]
+  /**
+   * Optional per-item name override, for connections whose accounts do not
+   * identify the institution. Labels are derived from account names by default
+   * (see pluggy/labels.ts); this is the escape hatch for the ones that arrive
+   * as "Conta Corrente" and name no bank at all.
+   */
+  itemLabels: Map<string, string>
   bearerToken: string
   bindHost: string
   bindPort: number
@@ -58,6 +65,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (!UUID.test(id)) errors.push(`PLUGGY_ITEM_IDS contains a non-UUID value: ${id}`)
   }
 
+  // `PLUGGY_ITEM_LABELS=<item id>=<name>,<item id>=<name>`. A typo here would
+  // otherwise be invisible: the override simply never applies and the connection
+  // keeps its derived name, so an id that is not configured is an error rather
+  // than a silently ignored line. A name may contain `=`; it may not contain a
+  // comma, which is the entry separator.
+  const itemLabels = new Map<string, string>()
+  for (const entry of (env['PLUGGY_ITEM_LABELS'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const separator = entry.indexOf('=')
+    if (separator === -1) {
+      errors.push(`PLUGGY_ITEM_LABELS entry is not <item id>=<name>: ${JSON.stringify(entry)}`)
+      continue
+    }
+    const id = entry.slice(0, separator).trim()
+    const name = entry.slice(separator + 1).trim()
+    if (!UUID.test(id)) errors.push(`PLUGGY_ITEM_LABELS has a non-UUID item id: ${id}`)
+    else if (!itemIds.includes(id)) errors.push(`PLUGGY_ITEM_LABELS names ${id}, which is not in PLUGGY_ITEM_IDS`)
+    else if (!name) errors.push(`PLUGGY_ITEM_LABELS has an empty name for ${id}`)
+    else itemLabels.set(id, name)
+  }
+
   const timeZone = env['MCP_TIMEZONE']?.trim() || 'America/Sao_Paulo'
   try {
     new Intl.DateTimeFormat('en-CA', { timeZone })
@@ -79,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     clientId,
     clientSecret,
     itemIds,
+    itemLabels,
     bearerToken,
     bindHost: env['MCP_BIND_HOST']?.trim() || '127.0.0.1',
     bindPort,

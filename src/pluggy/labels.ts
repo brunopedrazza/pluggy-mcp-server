@@ -13,6 +13,12 @@
  * So the bank name is taken from the item's own bank account, cleaned up, and
  * composed with the card's brand and level. Labels are derived rather than
  * configured, so a newly connected bank shows up without editing any env.
+ *
+ * Derivation cannot save an item that names no institution anywhere — one real
+ * connection reports both of its accounts as "Conta Corrente", which becomes a
+ * connection called "Conta Corrente" holding two accounts called "Conta Corrente
+ * Conta" and "Conta Corrente Conta 2". `PLUGGY_ITEM_LABELS` overrides the bank
+ * name per item for those; everything below still composes from it.
  */
 import type { Account } from 'pluggy-sdk'
 

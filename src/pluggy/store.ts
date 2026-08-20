@@ -100,7 +100,9 @@ export class PluggyStore {
       accountsError = `accounts unavailable: ${describeError(e)}`
     }
 
-    const label = deriveBankName(accounts, `Conexao ${short}`)
+    // A configured name wins: derivation cannot identify an institution whose
+    // accounts are all called "Conta Corrente".
+    const label = this.#config.itemLabels.get(itemId) ?? deriveBankName(accounts, `Conexao ${short}`)
     const status = item?.status ?? 'UNREACHABLE'
 
     // A failed account fetch cannot be swallowed. Every tool maps over
