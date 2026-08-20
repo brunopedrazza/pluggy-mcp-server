@@ -6,8 +6,8 @@
   "license": "MIT",
   "engines": { "node": ">=22.6" },
   "scripts": {
-    "probe": "node --experimental-strip-types scripts/probe.ts",
-    "dev": "node --experimental-strip-types --watch src/http.ts",
+    "probe": "node --env-file-if-exists=.env --experimental-strip-types --disable-warning=ExperimentalWarning scripts/probe.ts",
+    "dev": "node --env-file-if-exists=.env --experimental-strip-types --disable-warning=ExperimentalWarning --watch src/http.ts",
     "start": "node dist/http.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
