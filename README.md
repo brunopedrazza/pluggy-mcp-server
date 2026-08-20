@@ -91,9 +91,18 @@ tailscale serve --bg --https=443 127.0.0.1:8787
 ### Connect a client
 
 ```bash
-claude mcp add pluggy --transport http \
-  --header "Authorization: Bearer $MCP_BEARER_TOKEN" \
-  https://YOUR-VM.YOUR-TAILNET.ts.net/mcp
+claude mcp add --transport http pluggy https://YOUR-VM.YOUR-TAILNET.ts.net/mcp \
+  --header "Authorization: Bearer $MCP_BEARER_TOKEN"
+```
+
+The URL has to come before `--header`. That flag is variadic, so anything after it
+is parsed as another header and the URL never reaches the positional argument.
+
+Locally, against `npm run dev`:
+
+```bash
+claude mcp add --transport http pluggy http://127.0.0.1:8787/mcp \
+  --header "Authorization: Bearer $(grep '^MCP_BEARER_TOKEN=' .env | cut -d= -f2-)"
 ```
 
 > This does not work in Claude web or the mobile app: claude.ai custom connectors
