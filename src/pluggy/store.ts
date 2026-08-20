@@ -93,23 +93,30 @@ export class PluggyStore {
     // serves the last successful snapshot, which is what gives the banner a
     // recognisable bank name instead of a bare uuid.
     let accounts: Account[] = []
+    let accountsError: string | null = null
     try {
       accounts = (await this.#client.fetchAccounts(itemId)).results
-    } catch {
-      accounts = []
+    } catch (e) {
+      accountsError = `accounts unavailable: ${describeError(e)}`
     }
 
     const label = deriveBankName(accounts, `Conexao ${short}`)
     const status = item?.status ?? 'UNREACHABLE'
 
+    // A failed account fetch cannot be swallowed. Every tool maps over
+    // `accounts`, so a transient failure here would otherwise return an empty
+    // statement under an UPDATED banner: the bank silently drops out of every
+    // total, at full confidence, which is the exact failure decision 14 exists
+    // to prevent. An item that genuinely has no accounts is a different thing
+    // and stays healthy.
     return {
       itemId,
       label,
       status,
       executionStatus: item?.executionStatus ?? null,
       lastUpdatedAt: item?.lastUpdatedAt ? new Date(item.lastUpdatedAt) : null,
-      error: error ?? (item?.error ? `${item.error.code}: ${item.error.message}` : null),
-      healthy: HEALTHY.has(status),
+      error: error ?? (item?.error ? `${item.error.code}: ${item.error.message}` : null) ?? accountsError,
+      healthy: HEALTHY.has(status) && accountsError === null,
       accounts,
       accountLabels: buildAccountLabels(accounts, label),
     }
