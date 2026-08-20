@@ -12,6 +12,7 @@ const CONFIG: Config = {
   clientId: '22222222-2222-2222-2222-222222222222',
   clientSecret: 'secret',
   itemIds: [ITEM_ID],
+  itemLabels: new Map(),
   bearerToken: 'x'.repeat(32),
   bindHost: '127.0.0.1',
   bindPort: 8787,
@@ -68,6 +69,22 @@ describe('a connection whose accounts cannot be read is not healthy', () => {
 
     assert.equal(healthy.length, 1, 'an empty result is not a failure')
     assert.equal(missing.length, 0)
+  })
+
+  it('lets a configured name override one derivation cannot identify', async () => {
+    const store = new PluggyStore(
+      { ...CONFIG, itemLabels: new Map([[ITEM_ID, 'Banco X']]) },
+      client({
+        fetchAccounts: async () => ({
+          results: [account({ id: 'a', type: 'BANK', subtype: 'CHECKING_ACCOUNT', name: 'Conta Corrente' })],
+        }),
+      }),
+    )
+
+    const { healthy } = await store.resolve()
+
+    assert.equal(healthy[0]!.label, 'Banco X', 'the override replaces the derived name')
+    assert.equal(healthy[0]!.accountLabels.get('a'), 'Banco X Conta', 'and account labels compose from it')
   })
 
   it('keeps reporting accounts it could read', async () => {

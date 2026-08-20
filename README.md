@@ -64,6 +64,11 @@ Saved analyses, so the same question is asked the same way each month.
    per bank, not per account
 6. Copy the **Item ID** of each connection ("Copiar Item ID")
 
+Connection names are derived from the account names Pluggy reports, so a new bank
+needs no configuration. When an item names no institution anywhere — some report every
+account as `Conta Corrente` — name it yourself with
+`PLUGGY_ITEM_LABELS=<item id>=Banco X`, comma-separated for more than one.
+
 Connector 200 acts as a proxy over the connections Meu Pluggy owns, and refreshes them
 daily. Because Meu Pluggy owns them, **Pluggy refuses to sync them through the API** —
 `refresh_connection` answers `400 MeuPluggy item cant be updated` and says where to go
