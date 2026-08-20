@@ -5,10 +5,30 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import * as z from 'zod'
 
+import type { CreditCardBills } from 'pluggy-sdk'
+
 import { money } from '../money.ts'
 import { sanitize } from '../redact.ts'
 import { capRows, renderTsv } from '../tsv.ts'
 import { READ_ONLY, text, type ToolContext } from './common.ts'
+
+/**
+ * Interest, late fees and annuity charged straight onto the bill.
+ *
+ * These never appear as transactions, so without them a bill total that exceeds
+ * the sum of its rows looks like missing data rather than a finance charge.
+ * Types are kept alongside the amount because "is this interest or the annual
+ * fee?" is the whole question a surprising total raises.
+ */
+function financeCharges(charges: CreditCardBills['financeCharges']): { total: number; types: string } {
+  // A connector reports a zero-amount `OTHER` charge on bills that carry none.
+  // Naming a type beside an empty amount reads as a value that failed to load,
+  // so a charge of nothing is treated as no charge.
+  const items = (charges ?? []).filter((charge) => Math.abs(charge.amount) > 0)
+  const total = items.reduce((sum, charge) => sum + Math.abs(charge.amount), 0)
+  const types = [...new Set(items.map((charge) => charge.type))].join(' ')
+  return { total, types }
+}
 
 function rate(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return ''
@@ -22,7 +42,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'List credit card bills',
       description:
-        'Closed and open credit card bills: due date, closing date, total charged and what was paid. This is the cash view - what actually lands on each bill, with instalments split across months. For the purchase view, where a purchase counts in full on the day it was made, use list_transactions instead. The two answer different questions and will not match.',
+        'Closed and open credit card bills: due date, closing date, total charged, what was paid, and any finance charges. `due` joins to the `fatura` column of list_transactions, so `list_transactions({ bill: "2026-09-05" })` returns the line items behind one of these rows. `charges` is interest, late fees and annuity recorded on the bill header, and `charge_types` names them. Whether they also appear among the line items depends on the connector - one of these cards emits its IOF both ways - so check the rows before adding `charges` to them, or the charge is counted twice. Gaps in either direction survive on some bills; report the difference rather than presenting the reconciliation as exact.',
       inputSchema: z.object({
         connection: z.string().optional().describe('Restrict to one bank, matched on the connection label.'),
         count: z.number().int().positive().optional().describe('How many recent bills per card. Defaults to 12.'),
@@ -42,6 +62,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
             .slice(0, limit)
           for (const bill of recent) {
             const paid = (bill.payments ?? []).reduce((sum, p) => sum + Math.abs(p.amount), 0)
+            const charges = financeCharges(bill.financeCharges)
             rows.push([
               c.accountLabels.get(account.id) ?? c.label,
               ctx.plainDay(bill.dueDate),
@@ -49,12 +70,16 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
               money(bill.totalAmount),
               money(bill.minimumPaymentAmount),
               paid > 0 ? money(paid) : '',
+              charges.total > 0 ? money(charges.total) : '',
+              charges.types,
             ])
           }
         }
       }
 
-      return text(renderTsv(['card', 'due', 'closing', 'total', 'minimum', 'paid'], rows, { missing }))
+      return text(
+        renderTsv(['card', 'due', 'closing', 'total', 'minimum', 'paid', 'charges', 'charge_types'], rows, { missing }),
+      )
     },
   )
 
