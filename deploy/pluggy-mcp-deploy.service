@@ -1,0 +1,18 @@
+# Oneshot: run one pull-deploy pass. Triggered by pluggy-mcp-deploy.timer, not enabled directly.
+#
+# Runs as root, unlike the server itself. The checkout in /opt is root-owned precisely so the
+# service account cannot rewrite its own code, and the deploy needs to write there and to restart
+# the unit. The trade this accepts is the one every pull-deploy accepts: whoever can push to main
+# can run code as root on this box.
+[Unit]
+Description=pluggy-mcp pull-deploy (fetch main, rebuild if changed, health-check + rollback)
+Documentation=https://github.com/brunopedrazza/pluggy-mcp-server
+After=network-online.target pluggy-mcp.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=MCP_DEPLOY_REPO_DIR=/opt/pluggy-mcp
+ExecStart=/opt/pluggy-mcp/deploy/deploy.sh
+# npm ci plus a health budget can take a couple of minutes; don't let systemd kill it early.
+TimeoutStartSec=600

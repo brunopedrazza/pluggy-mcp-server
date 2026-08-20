@@ -1,0 +1,16 @@
+# Fire the pull-deploy every few minutes. The service is a no-op when origin/main hasn't moved, so
+# a tight interval just means changes land quickly, not extra rebuilds.
+#
+# A restart re-sweeps 24 months of statements to warm the cache, so deploys are not free — but they
+# happen per commit, not per tick, which is what makes the tick cheap.
+[Unit]
+Description=Run pluggy-mcp pull-deploy periodically
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+# No Persistent=: it only applies to calendar timers. OnBootSec covers the "VM was off" case.
+
+[Install]
+WantedBy=timers.target

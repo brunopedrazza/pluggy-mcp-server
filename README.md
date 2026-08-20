@@ -207,6 +207,10 @@ sudo systemctl restart pluggy-mcp
 Rotating the bearer token is the same restart: edit `/etc/pluggy-mcp/env`,
 restart the service, and update the header on every client.
 
+Or let the box do it: a systemd timer can track `origin/main`, rebuild when it
+moves, and roll back if the new commit doesn't come back healthy. Two files to
+copy — see [deploy/README.md](./deploy/README.md).
+
 ## Design
 
 Every decision and its reasoning is in [DESIGN.md](./DESIGN.md).
