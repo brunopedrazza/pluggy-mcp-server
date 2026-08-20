@@ -41,9 +41,18 @@ export const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempoten
  * The resulting ledger is coherent double-entry: paying a card bill appears as a
  * debit on the bank and a credit on the card, which cancel, leaving true
  * spending when everything is summed together.
+ *
+ * The magnitude comes from `amountInAccountCurrency` whenever Pluggy provides
+ * it, because `amount` is denominated in the currency of the purchase. A small
+ * minority of rows on a Brazilian card are USD or ARS, and reading those as
+ * reais is wrong in both directions at once: a dollar subscription lands about
+ * five times too cheap, a peso restaurant bill hundreds of times too expensive.
+ * Neither looks like a consistent bias, so no total ever reads as wrong enough
+ * to question. Every BRL row that carries the field agrees with `amount` to the
+ * cent, so preferring it is safe as well as correct.
  */
 export function signedAmount(transaction: Transaction): number {
-  const magnitude = Math.abs(transaction.amount)
+  const magnitude = Math.abs(transaction.amountInAccountCurrency ?? transaction.amount)
   return transaction.type === 'DEBIT' ? -magnitude : magnitude
 }
 
