@@ -26,6 +26,8 @@ export type TsvOptions = {
   missing?: MissingConnection[] | undefined
   /** Echoed so the model can confirm the window it actually received. */
   period?: string | undefined
+  /** Further warnings about what these rows do not contain. */
+  notes?: string[] | undefined
 }
 
 export type Cell = string | number | null | undefined
@@ -69,6 +71,7 @@ export function renderTsv(headers: string[], rows: Cell[][], options: TsvOptions
 
   if (options.missing && options.missing.length > 0) blocks.push(missingBanner(options.missing))
   if (options.truncated) blocks.push(truncationBanner(options.truncated))
+  if (options.notes) blocks.push(...options.notes)
   if (options.period) blocks.push(`Periodo: ${options.period}`)
 
   if (rows.length === 0) {
