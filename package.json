@@ -12,7 +12,7 @@
     "probe": "node --env-file-if-exists=.env --experimental-strip-types --disable-warning=ExperimentalWarning scripts/probe.ts",
     "dev": "node --env-file-if-exists=.env --experimental-strip-types --disable-warning=ExperimentalWarning --watch src/http.ts",
     "start": "node dist/http.js",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/*.test.ts\""
   },

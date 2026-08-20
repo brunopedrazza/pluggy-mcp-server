@@ -25,6 +25,10 @@ individuals accessing their own data over the API.
 | `list_loans` | Loans and financing: outstanding balance, rates, installments |
 | `refresh_connection` | Triggers a Pluggy sync (non-blocking) |
 
+Amounts are normalised so **negative always means money leaving the account**, on
+bank accounts and credit cards alike. Pluggy's raw data disagrees between the two,
+which makes card spending cancel bank spending if summed naively.
+
 ## Setup
 
 ### 1. Connect your banks (once, ~15 min)
@@ -63,9 +67,11 @@ print account numbers, tax IDs, or transaction descriptions.
 ### 3. Run
 
 ```bash
-npm run build
-npm start
+npm run dev            # development, reads .env directly
+npm run build && npm start   # production
 ```
+
+Check it is alive with `curl localhost:8787/health`.
 
 ## Deployment (VM + Tailscale)
 
