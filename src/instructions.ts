@@ -19,6 +19,15 @@ Amounts are already normalised: **negative means money left the account, positiv
 
 \`amount\` is always in the account's own currency, including for purchases made abroad, which Pluggy reports in the currency of the merchant. When a row carries \`valor_orig\` (for example \`49.90 USD\`) that is the original charge, shown so the row can be reconciled against a receipt. **Never sum \`valor_orig\` and never read it as reais** - the converted value is already in \`amount\`.
 
+**Not every account is in reais.** \`list_accounts\`, \`list_investments\` and
+\`list_investment_transactions\` each carry a \`currency\` column, and an offshore
+brokerage reports USD balances and positions beside Brazilian ones in the same
+table. Group by \`currency\` before totalling. Net worth, portfolio value and
+allocation are only meaningful per currency unless you convert - and if you
+convert, say which rate you used and that the consolidated figure is an
+estimate. A number that silently adds dollars to reais is wrong by several times
+over and looks entirely plausible.
+
 Because both sides of an internal movement are present, transfers between the person's own accounts cancel out when everything is summed together. Paying a credit card bill shows up as a debit on the bank and a credit on the card. That is correct for net cash flow.
 
 **Spending is not the same as money leaving an account.** Two kinds of outflow are not expenses, and both are large enough to wreck a total:

@@ -92,6 +92,42 @@ export const TRANSACTION_HEADERS = [
   'account',
 ]
 
+/**
+ * Positions and their movements can be denominated in different currencies.
+ *
+ * Every position was BRL until an offshore brokerage was connected, at which
+ * point six USD holdings joined the same table as the Brazilian ones with
+ * nothing to tell them apart — and a net-worth question adds `7276.21` to a
+ * balance in reais as if the unit were the same. The column is the only thing
+ * that makes a cross-currency sum visibly wrong instead of quietly wrong.
+ */
+export function holdingCurrency(currencyCode: string | null | undefined): string {
+  return currencyCode ?? 'BRL'
+}
+
+export const INVESTMENT_HEADERS = [
+  'name',
+  'type',
+  'balance',
+  'currency',
+  'profit',
+  'annual_rate',
+  'rate_12m',
+  'due',
+  'bank',
+]
+
+export const INVESTMENT_TRANSACTION_HEADERS = [
+  'date',
+  'investment',
+  'type',
+  'amount',
+  'quantity',
+  'value',
+  'currency',
+  'bank',
+]
+
 export type TransactionRow = {
   transaction: Transaction
   connection: Connection

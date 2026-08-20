@@ -10,7 +10,14 @@ import type { CreditCardBills } from 'pluggy-sdk'
 import { money } from '../money.ts'
 import { sanitize } from '../redact.ts'
 import { capRows, renderTsv } from '../tsv.ts'
-import { READ_ONLY, text, type ToolContext } from './common.ts'
+import {
+  holdingCurrency,
+  INVESTMENT_HEADERS,
+  INVESTMENT_TRANSACTION_HEADERS,
+  READ_ONLY,
+  text,
+  type ToolContext,
+} from './common.ts'
 
 /**
  * Interest, late fees and annuity charged straight onto the bill.
@@ -88,7 +95,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'List investments',
       description:
-        'Current investment positions across every connected institution: balance, profit so far, and reported rates. This is a snapshot of today, not a history - to see contributions and withdrawals use list_investment_transactions. `profit` is what the institution reports as accumulated gain, which is not the same as a time-weighted return.',
+        'Current investment positions across every connected institution: balance, profit so far, and reported rates. This is a snapshot of today, not a history - to see contributions and withdrawals use list_investment_transactions. `profit` is what the institution reports as accumulated gain, which is not the same as a time-weighted return. `balance` and `profit` are in the position\'s own currency, given in `currency`: an offshore brokerage reports USD alongside Brazilian positions in BRL, so group by `currency` before totalling and never add across currencies without converting and saying so.',
       inputSchema: z.object({
         connection: z.string().optional().describe('Restrict to one bank, matched on the connection label.'),
         type: z.string().optional().describe('Restrict to one type, for example FIXED_INCOME, EQUITY or MUTUAL_FUND.'),
@@ -106,6 +113,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
             sanitize(investment.name, 44),
             `${investment.type}/${investment.subtype ?? '-'}`,
             money(investment.balance),
+            holdingCurrency(investment.currencyCode),
             money(investment.amountProfit),
             rate(investment.annualRate),
             rate(investment.lastTwelveMonthsRate),
@@ -117,7 +125,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
 
       const { rows: capped, truncated } = capRows(rows, ctx.config.maxRows)
       return text(
-        renderTsv(['name', 'type', 'balance', 'profit', 'annual_rate', 'rate_12m', 'due', 'bank'], capped, {
+        renderTsv(INVESTMENT_HEADERS, capped, {
           truncated,
           missing,
         }),
@@ -130,7 +138,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
     {
       title: 'List investment transactions',
       description:
-        'Contributions, withdrawals and other movements inside investments. Needed to reason about returns, since a balance alone cannot tell a gain from a deposit. Coverage is sparse: many institutions expose no movement history through Open Finance, and an empty result means "not reported", never "no contributions".',
+        'Contributions, withdrawals and other movements inside investments. Needed to reason about returns, since a balance alone cannot tell a gain from a deposit. Coverage is sparse: many institutions expose no movement history through Open Finance, and an empty result means "not reported", never "no contributions". `amount` and `value` are in the position\'s own currency, given in `currency`; never add across currencies without converting and saying so.',
       inputSchema: z.object({
         connection: z.string().optional().describe('Restrict to one bank, matched on the connection label.'),
         investment: z.string().optional().describe('Restrict to investments whose name contains this text.'),
@@ -155,6 +163,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
               money(movement.amount),
               movement.quantity ?? '',
               money(movement.value),
+              holdingCurrency(holding.currencyCode),
               c.label,
             ])
           }
@@ -163,7 +172,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
 
       rows.sort((a, b) => String(b[0]).localeCompare(String(a[0])))
       const { rows: capped, truncated } = capRows(rows, ctx.config.maxRows)
-      const body = renderTsv(['date', 'investment', 'type', 'amount', 'quantity', 'value', 'bank'], capped, {
+      const body = renderTsv(INVESTMENT_TRANSACTION_HEADERS, capped, {
         truncated,
         missing,
       })
