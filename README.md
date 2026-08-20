@@ -17,9 +17,9 @@ individuals accessing their own data over the API.
 |---|---|
 | `list_connections` | Connections, status, and data freshness per product |
 | `list_accounts` | Checking, savings and credit card accounts, with balances |
-| `list_transactions` | Statement as TSV, including installment and full purchase amount |
+| `list_transactions` | Statement as TSV: posting date, purchase date, installment, and the bill each row landed on |
 | `search_transactions` | Search by text, amount range and category, across accounts |
-| `list_credit_card_bills` | Bills: due date, closing date, total, payments |
+| `list_credit_card_bills` | Bills: due date, closing date, total, payments, finance charges |
 | `list_investments` | Current portfolio positions |
 | `list_investment_transactions` | Contributions and withdrawals, to compute returns |
 | `list_loans` | Loans and financing: outstanding balance, rates, installments |
@@ -27,7 +27,26 @@ individuals accessing their own data over the API.
 
 Amounts are normalised so **negative always means money leaving the account**, on
 bank accounts and credit cards alike. Pluggy's raw data disagrees between the two,
-which makes card spending cancel bank spending if summed naively.
+which makes card spending cancel bank spending if summed naively. They are also
+always in the account's own currency: Pluggy reports a foreign purchase in the
+merchant's currency, so the converted value is used and the original is kept in
+`valor_orig` for reconciliation.
+
+On a credit card, `date` is the **posting** date, not the purchase date — an
+instalment of a year-old purchase posts this month. `data_compra` carries the
+original date where the two differ, and `fatura` says which bill the row landed
+on, so `list_transactions({ bill })` returns the line items behind a bill total.
+
+## Prompts
+
+Saved analyses, so the same question is asked the same way each month.
+
+| Prompt | What it does |
+|---|---|
+| `analise_mensal` | A month end to end: in, out, categories, and the change against the month before |
+| `fatura_cartao` | One bill: reconciled against the bank's total, new purchases split from instalments of old ones |
+| `revisao_assinaturas` | Recurring charges, including the forgotten ones and the ones that went up |
+| `saude_financeira` | Net worth, debt, credit usage and savings rate |
 
 ## Setup
 
