@@ -98,14 +98,71 @@ The process listens **on loopback only**. Exposure is handled by Tailscale, neve
 by binding to `0.0.0.0` — cloud VMs have public IPs, and a wrong bind combined
 with an open security list puts your bank statement on the internet.
 
+The VM needs Node 22.6+ and Tailscale already up (`tailscale up`). The unit file
+runs `/usr/bin/node`, which is where a distro or NodeSource package lands; if you
+installed Node through nvm, point `ExecStart` at the real binary instead.
+
+### 1. Service account and code
+
+The service never writes to disk — the cache is in memory, and the unit sets
+`ProtectSystem=strict` with an empty `ReadWritePaths`. So the code is owned by
+root and the service user only reads it: a compromised process cannot rewrite its
+own source.
+
 ```bash
-sudo cp deploy/pluggy-mcp.service /etc/systemd/system/
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin pluggy-mcp
+
+sudo git clone https://github.com/brunopedrazza/pluggy-mcp-server /opt/pluggy-mcp
+cd /opt/pluggy-mcp
+sudo npm ci                  # dev dependencies included: tsc is needed to build
+sudo npm run build
+sudo npm prune --omit=dev    # and dropped again; free-tier VMs are small
+```
+
+### 2. Credentials
+
+Run the setup on the VM rather than copying a `.env` over scp. It verifies the
+credentials against the Pluggy API before writing anything, which also proves the
+VM has outbound connectivity — worth knowing before systemd is in the picture.
+
+```bash
+sudo npm run setup
+
 sudo install -d -m 700 /etc/pluggy-mcp
 sudo install -m 600 .env /etc/pluggy-mcp/env
-sudo systemctl enable --now pluggy-mcp
-
-tailscale serve --bg --https=443 127.0.0.1:8787
+sudo rm /opt/pluggy-mcp/.env   # one copy of the secret, not two
 ```
+
+### 3. Service
+
+```bash
+sudo cp deploy/pluggy-mcp.service /etc/systemd/system/
+sudo systemctl enable --now pluggy-mcp
+```
+
+Confirm it reached Pluggy, not just that the port answers:
+
+```bash
+curl localhost:8787/health
+journalctl -u pluggy-mcp -n 20
+```
+
+The journal should end in `transaction cache warmed`. If instead it says
+`cache warm failed` with a name resolution error, the cause is
+`RestrictAddressFamilies` in the unit: where glibc resolves through
+`systemd-resolved`, `getaddrinfo` needs a unix socket. Add `AF_UNIX` to that line
+and restart.
+
+### 4. Publish on the tailnet
+
+```bash
+tailscale serve --bg --https=443 127.0.0.1:8787
+tailscale serve status        # prints the https://…ts.net URL used below
+```
+
+This requires HTTPS enabled for the tailnet (admin console > DNS). The
+certificate is real and issued automatically, so the bearer token never travels
+in the clear.
 
 ### Connect a client
 
@@ -127,6 +184,17 @@ claude mcp add --transport http pluggy http://127.0.0.1:8787/mcp \
 > This does not work in Claude web or the mobile app: claude.ai custom connectors
 > are dialed by Anthropic's infrastructure, which cannot reach a private tailnet.
 > Clients that connect from the machine they run on work normally.
+
+### Updating
+
+```bash
+cd /opt/pluggy-mcp
+sudo git pull && sudo npm ci && sudo npm run build && sudo npm prune --omit=dev
+sudo systemctl restart pluggy-mcp
+```
+
+Rotating the bearer token is the same restart: edit `/etc/pluggy-mcp/env`,
+restart the service, and update the header on every client.
 
 ## Design
 
