@@ -1,0 +1,35 @@
+[Unit]
+Description=Pluggy MCP Server (read-only, dados financeiros pessoais)
+Documentation=https://github.com/brunopedrazza/pluggy-mcp-server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pluggy-mcp
+Group=pluggy-mcp
+WorkingDirectory=/opt/pluggy-mcp
+ExecStart=/usr/bin/node dist/http.js
+EnvironmentFile=/etc/pluggy-mcp/env
+Restart=always
+RestartSec=5
+
+# O processo so escuta em loopback; nada aqui deve expor porta externamente.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+# Cache e' em memoria: o servico nao precisa escrever em disco.
+ReadWritePaths=
+
+[Install]
+WantedBy=multi-user.target

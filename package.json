@@ -1,0 +1,26 @@
+{
+  "name": "pluggy-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server read-only para dados financeiros pessoais via Pluggy (Meu Pluggy / Conector 200), self-hosted.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.6" },
+  "scripts": {
+    "probe": "node --experimental-strip-types scripts/probe.ts",
+    "dev": "node --experimental-strip-types --watch src/http.ts",
+    "start": "node dist/http.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "pluggy-sdk": "^0.90.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
