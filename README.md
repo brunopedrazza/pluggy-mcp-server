@@ -65,7 +65,10 @@ Saved analyses, so the same question is asked the same way each month.
 6. Copy the **Item ID** of each connection ("Copiar Item ID")
 
 Connector 200 acts as a proxy over the connections Meu Pluggy owns, and refreshes them
-daily.
+daily. Because Meu Pluggy owns them, **Pluggy refuses to sync them through the API** —
+`refresh_connection` answers `400 MeuPluggy item cant be updated` and says where to go
+instead. Forcing an update means reconnecting the bank at meu.pluggy.ai, and a window
+missing from your history only comes back if the bank still exposes it over Open Finance.
 
 ### 2. Check what Connector 200 actually returns
 

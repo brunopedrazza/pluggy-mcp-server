@@ -21,6 +21,32 @@ const STATUS_HELP: Record<string, string> = {
   UNREACHABLE: 'nao foi possivel consultar este item',
 }
 
+/**
+ * Turns a failed sync into something the caller can act on.
+ *
+ * Items owned by the MeuPluggy connector cannot be refreshed through the API at
+ * all: Pluggy answers `400 MeuPluggy item cant be updated`. They are a proxy
+ * over connections Meu Pluggy owns and syncs itself, about once a day, so the
+ * call is not failing — it is inapplicable, and retrying never changes that.
+ * Passing the raw 400 through invites the model to offer a refresh that cannot
+ * work and to treat a stale window as fixable from here.
+ *
+ * Matched on the message rather than on connector id 200, so a setup that also
+ * has a directly connected bank keeps refreshing that one normally.
+ */
+export function explainRefreshFailure(label: string, error: unknown): string {
+  const detail = describeError(error)
+  if (/can'?t be updated/i.test(detail) || /meupluggy/i.test(detail)) {
+    return (
+      `${label}: esta conexao nao pode ser sincronizada por aqui. Ela pertence ao conector MeuPluggy, ` +
+      `que atualiza as conexoes sozinho cerca de uma vez por dia. Forcar uma atualizacao agora significa ` +
+      `reconectar o banco em https://meu.pluggy.ai - repetir este comando nao vai ajudar. ` +
+      `Um intervalo faltando no historico tambem nao se resolve por aqui.`
+    )
+  }
+  return `${label}: falha ao iniciar sincronizacao - ${detail}`
+}
+
 export function registerConnectionTools(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
     'list_connections',
@@ -80,7 +106,7 @@ export function registerConnectionTools(server: McpServer, ctx: ToolContext): vo
     {
       title: 'Refresh a connection',
       description:
-        'Asks Pluggy to re-sync a bank. Returns immediately without waiting - a sync takes minutes. Poll list_connections to see when the status returns to UPDATED. Only worth calling when list_connections shows the data is older than the answer needs; connections refresh on their own about once a day.',
+        'Asks Pluggy to re-sync a bank. Returns immediately without waiting - a sync takes minutes. Poll list_connections to see when the status returns to UPDATED. Only worth calling when list_connections shows the data is older than the answer needs; connections refresh on their own about once a day. Connections owned by the MeuPluggy connector cannot be refreshed this way at all - Pluggy refuses them - so do not offer a refresh as a way to fill a gap in history without checking that it is accepted.',
       inputSchema: z.object({
         connection: z.string().describe('The bank to refresh, matched on its connection label or item id.'),
       }),
@@ -108,7 +134,7 @@ export function registerConnectionTools(server: McpServer, ctx: ToolContext): vo
           `${target.label}: sincronizacao iniciada (status ${item.status}). Isso leva alguns minutos. Chame list_connections para acompanhar; nao repita este comando enquanto estiver UPDATING.`,
         )
       } catch (error) {
-        return text(`${target.label}: falha ao iniciar sincronizacao - ${describeError(error)}`)
+        return text(explainRefreshFailure(target.label, error))
       }
     },
   )
