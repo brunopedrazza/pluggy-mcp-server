@@ -114,11 +114,11 @@ Valores em reais com duas casas. Linhas com valor_orig são compras em moeda est
 Use list_connections, list_accounts, list_investments, list_loans e as transações dos últimos 6 meses.
 
 Calcule, sempre por código:
-- patrimônio: saldo em contas mais investimentos, menos dívida de cartão e empréstimos;
+- patrimônio: saldo em contas mais investimentos, menos dívida de cartão e empréstimos. Apresente **primeiro separado por moeda**, usando a coluna \`currency\`, e depois um total consolidado em reais — dizendo qual cotação usou e que o consolidado é estimativa;
 - uso do limite de crédito por cartão, em percentual;
 - entrada e saída médias mensais dos últimos 6 meses, excluindo Credit card payment e Same person transfer;
 - taxa de poupança, ou seja, quanto sobra por mês em relação ao que entra;
-- concentração da carteira por tipo de investimento.
+- concentração da carteira por tipo de investimento, e também por moeda se houver mais de uma.
 
 Se houver empréstimo, compare o CET dele com a rentabilidade dos investimentos e diga objetivamente se faz mais sentido quitar ou seguir investindo.
 

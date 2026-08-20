@@ -20,7 +20,7 @@ individuals accessing their own data over the API.
 | `list_transactions` | Statement as TSV: posting date, purchase date, installment, and the bill each row landed on |
 | `search_transactions` | Search by text, amount range and category, across accounts |
 | `list_credit_card_bills` | Bills: due date, closing date, total, payments, finance charges |
-| `list_investments` | Current portfolio positions |
+| `list_investments` | Current portfolio positions, each with its own currency |
 | `list_investment_transactions` | Contributions and withdrawals, to compute returns |
 | `list_loans` | Loans and financing: outstanding balance, rates, installments |
 | `refresh_connection` | Triggers a Pluggy sync (non-blocking) |
@@ -31,6 +31,11 @@ which makes card spending cancel bank spending if summed naively. They are also
 always in the account's own currency: Pluggy reports a foreign purchase in the
 merchant's currency, so the converted value is used and the original is kept in
 `valor_orig` for reconciliation.
+
+Not every account is in reais. `list_accounts`, `list_investments` and
+`list_investment_transactions` all carry a `currency` column, because an offshore
+brokerage reports USD balances and positions beside the Brazilian ones. Net worth and
+portfolio totals are only meaningful per currency unless you convert and say so.
 
 On a credit card, `date` is the **posting** date, not the purchase date — an
 instalment of a year-old purchase posts this month. `data_compra` carries the
