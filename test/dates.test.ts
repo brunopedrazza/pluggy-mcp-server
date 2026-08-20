@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { calendarDateFormatter, parsePeriod, zonedToInstant } from '../src/dates.ts'
+import { calendarDateFormatter, parsePeriod, plainDateFormatter, zonedToInstant } from '../src/dates.ts'
 
 const TZ = 'America/Sao_Paulo'
 const day = calendarDateFormatter(TZ)
@@ -76,5 +76,25 @@ describe('parsePeriod', () => {
     assert.throws(() => parsePeriod('março', TZ), /Unrecognised period/)
     assert.throws(() => parsePeriod('2026-13', TZ), /Invalid month/)
     assert.throws(() => parsePeriod('2026-05-01..2026-04-01', TZ), /ends before it starts/)
+  })
+})
+
+describe('plainDateFormatter', () => {
+  const plain = plainDateFormatter(TZ)
+
+  it('does not shift bill due dates stored at UTC midnight', () => {
+    // Real values: 9 of 9 bill due dates arrive exactly at UTC midnight. Zone
+    // conversion would render "due on the 4th" for a bill due on the 5th.
+    assert.equal(plain('2026-08-05T00:00:00.000Z'), '2026-08-05')
+    assert.equal(plain('2026-07-06T00:00:00.000Z'), '2026-07-06')
+  })
+
+  it('still zone-converts a field that carries a real time', () => {
+    assert.equal(plain('2026-08-17T00:46:07.390Z'), '2026-08-16')
+  })
+
+  it('renders absent values as empty', () => {
+    assert.equal(plain(null), '')
+    assert.equal(plain(undefined), '')
   })
 })

@@ -257,3 +257,56 @@ Amounts must be rounded for display rather than printed raw.
 
 **Loans returned 0 everywhere,** which does not distinguish "no loans" from "not
 exposed by connector 200". `list_loans` ships, but it may simply stay empty.
+
+---
+
+## What building it found (2026-08-20)
+
+Three problems that only surfaced against live data, each one a silently wrong
+number rather than an error.
+
+### The sign of `amount` is inverted between account types
+
+Measured across all six real accounts, consistently:
+
+```
+BANK    DEBIT  -1338.00     CREDIT  +2000.00
+CREDIT  DEBIT   +188.16     CREDIT  -4860.40
+```
+
+A card purchase arrives **positive** while a bank purchase arrives **negative**.
+Summing raw amounts over a mixed set therefore makes card spending cancel bank
+spending. `type` is the field that is actually consistent, so it drives the sign:
+`DEBIT` is always rendered negative. The result is coherent double-entry - paying
+a card bill is a debit on the bank and a credit on the card, which cancel - so
+summing everything yields true spending.
+
+### Pluggy uses two date conventions and does not distinguish them
+
+`transaction.date` is a real instant: 0 of 1,595 sit at UTC midnight.
+`bill.dueDate` is a calendar date pinned to UTC midnight: 9 of 9 do. Applying the
+zone conversion to a bill renders "due on the 4th" for a bill due on the 5th,
+which is an error someone acts on by paying late.
+
+So there are two formatters. `day()` converts instants to the configured zone;
+`plainDay()` passes UTC-midnight values through untouched and falls back to zone
+conversion for anything carrying a real time, so an institution that starts
+sending timestamps degrades safely instead of being misread.
+
+### Money leaving an account is not the same as spending
+
+July alone carried R$29,984.52 of `Aplicação em CDB`, `Tesouro Direto` and
+`Fundo`, categorised `Fixed income` and `Investments`. Those are outflows but not
+expenses - the money is still the person's, it only moved. Together with
+`Credit card payment` and `Same person transfer`, they are excluded from any
+spending total. The server instructions state this explicitly, because there is
+no aggregation layer to enforce it.
+
+### Verified end to end
+
+- `list_transactions` for 2026-07 returned 188 rows with 13 instalment lines,
+  matching an independent `fetchAllTransactions` count over the same Sao Paulo
+  window exactly.
+- A 24-month window produced the `PARCIAL` banner reporting 2,318 real rows.
+- Bill totals matched the probe, with `1757.082` rendered as `1757.08`.
+- 46 investment positions, matching 38 + 8 from the probe.

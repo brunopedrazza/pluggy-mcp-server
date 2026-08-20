@@ -89,6 +89,35 @@ export function calendarDateFormatter(timeZone: string): (d: Date | string) => s
   return (d) => fmt.format(typeof d === 'string' ? new Date(d) : d)
 }
 
+/**
+ * Formatter for fields that are calendar dates rather than instants.
+ *
+ * Pluggy uses two conventions and does not distinguish them in the type. A
+ * transaction's `date` is a real instant; a bill's `dueDate` is a calendar date
+ * pinned to UTC midnight. Measured: 0 of 1,595 transactions sit at UTC midnight,
+ * while 9 of 9 bill due dates do. Converting a bill's due date to Sao Paulo
+ * moves it back a day, turning "due on the 5th" into "due on the 4th", which is
+ * an error someone acts on.
+ *
+ * The UTC-midnight test is applied per value rather than assumed per field, so
+ * an institution that starts sending real timestamps degrades to zone
+ * conversion instead of being silently misread.
+ */
+export function plainDateFormatter(timeZone: string): (value: Date | string | null | undefined) => string {
+  const zoned = calendarDateFormatter(timeZone)
+  return (value) => {
+    if (value === null || value === undefined) return ''
+    const date = typeof value === 'string' ? new Date(value) : value
+    if (Number.isNaN(date.getTime())) return ''
+    const isUtcMidnight =
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0
+    return isUtcMidnight ? date.toISOString().slice(0, 10) : zoned(date)
+  }
+}
+
 function endOfDay(timeZone: string, year: number, month: number, day: number): Date {
   return zonedToInstant(timeZone, year, month, day, 23, 59, 59, 999)
 }
