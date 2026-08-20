@@ -26,7 +26,9 @@ ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6
 RestrictNamespaces=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
+# MemoryDenyWriteExecute is deliberately absent. V8 tiers up hot bytecode by
+# writing machine code into executable pages, so Node SIGTRAPs inside the JIT
+# a few milliseconds after boot under it. Do not add it back.
 SystemCallArchitectures=native
 # The cache is in memory: the service never needs to write to disk.
 ReadWritePaths=
