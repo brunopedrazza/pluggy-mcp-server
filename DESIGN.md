@@ -21,6 +21,13 @@ one connected institution has several. The server is therefore **item-agnostic**
 it takes N `itemId`s and reads whatever is there. That works identically for the
 free Connector 200 and for a paid plan later, with no rewrite.
 
+Item IDs have to be configured explicitly, and that is not a shortcut. Pluggy has
+no endpoint that lists an application's connections, by design: *"For security
+reasons, Pluggy does not provide a method to list all existing connections.
+Customers are responsible for tracking and maintaining their own references to
+Pluggy item IDs."* There is nothing to auto-discover, so `list_connections`
+resolves the configured IDs through `fetchItem` rather than enumerating anything.
+
 ## 2. Faithful mirror of banco.mcp.ai, no server-side aggregation
 
 banco.mcp.ai exposes 5 read-only listing tools. We adopt the same philosophy:
