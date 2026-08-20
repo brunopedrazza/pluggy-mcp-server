@@ -27,18 +27,43 @@ const client = new PluggyClient({ clientId: PLUGGY_CLIENT_ID, clientSecret: PLUG
 const heading = (t: string) => console.log(`\n${'='.repeat(64)}\n${t}\n${'='.repeat(64)}`)
 const yesNo = (b: boolean) => (b ? 'yes' : 'no')
 
-/** Treats the value as a calendar date: UTC part only, no time zone conversion. */
-const calendarDate = (d: Date) => d.toISOString().slice(0, 10)
+// Pluggy returns real instants, not UTC-midnight calendar dates, so the calendar
+// day has to be resolved in the account's own time zone. Slicing the ISO string
+// puts late-evening transactions on the following day.
+const SAO_PAULO = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/** The calendar date the account holder would recognise. */
+const calendarDate = (d: Date) => SAO_PAULO.format(d)
 
 /** Detects whether the instant carries a real time (not UTC midnight). */
 const hasTimeComponent = (d: Date) =>
   d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0
 
+/** True when naive ISO slicing would report a different day than Sao Paulo does. */
+const utcDayDiffers = (d: Date) => d.toISOString().slice(0, 10) !== calendarDate(d)
+
+/** The Pluggy SDK throws plain objects, not Errors, so String(e) yields "[object Object]". */
+function describeError(e: unknown): string {
+  if (e instanceof Error) return e.message
+  if (e && typeof e === 'object') {
+    const o = e as Record<string, unknown>
+    const parts = [o['code'], o['codeDescription'], o['message']].filter(Boolean)
+    if (parts.length > 0) return parts.join(' ')
+    return JSON.stringify(e)
+  }
+  return String(e)
+}
+
 async function tryFetch<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn()
   } catch (e) {
-    console.log(`  ${label}: ERROR -> ${e instanceof Error ? e.message : String(e)}`)
+    console.log(`  ${label}: ERROR -> ${describeError(e)}`)
     return null
   }
 }
@@ -85,6 +110,7 @@ for (const itemId of itemIds) {
   // --- Unknowns 2 and 3: dates and categories -----------------------------
   const dateFrom = new Date(Date.now() - 180 * 864e5).toISOString().slice(0, 10)
   let withTime = 0
+  let utcMismatch = 0
   let total = 0
   let withCardMetadata = 0
   let withInstallments = 0
@@ -95,15 +121,19 @@ for (const itemId of itemIds) {
   const sampleTimestamps: string[] = []
 
   for (const a of accountList) {
-    const page = await tryFetch(`fetchTransactions(${a.type})`, () =>
-      client.fetchTransactions(a.id, { from: dateFrom, pageSize: 200 }),
+    // v1 /transactions returns 410 Gone; v2 is cursor-based and uses dateFrom/dateTo.
+    const page = await tryFetch(`fetchTransactionsCursor(${a.type})`, () =>
+      client.fetchTransactionsCursor(a.id, { dateFrom }),
     )
     for (const t of page?.results ?? []) {
       total++
       const d = new Date(t.date)
-      if (hasTimeComponent(d)) {
-        withTime++
-        if (sampleTimestamps.length < 3) sampleTimestamps.push(d.toISOString())
+      if (hasTimeComponent(d)) withTime++
+      if (utcDayDiffers(d)) {
+        utcMismatch++
+        if (sampleTimestamps.length < 3) {
+          sampleTimestamps.push(`${d.toISOString()} -> UTC ${d.toISOString().slice(0, 10)} vs SP ${calendarDate(d)}`)
+        }
       }
       if (t.category) categories.add(t.category)
       else withoutCategory++
@@ -117,11 +147,12 @@ for (const itemId of itemIds) {
     }
   }
 
-  console.log(`\n  TRANSACTIONS (last 180d, up to 200 per account): ${total}`)
+  console.log(`\n  TRANSACTIONS (last 180d, first cursor page per account): ${total}`)
+  console.log(`    carrying a real time       : ${withTime}/${total}`)
   console.log(
-    `    with time != UTC midnight  : ${withTime}/${total}  ${withTime ? '<<< HEADS UP' : '(good, these are calendar dates)'}`,
+    `    ISO slicing would misdate  : ${utcMismatch}/${total}  ${utcMismatch ? '<<< must resolve dates in America/Sao_Paulo' : ''}`,
   )
-  if (sampleTimestamps.length) console.log(`      samples: ${sampleTimestamps.join(', ')}`)
+  for (const sample of sampleTimestamps) console.log(`      ${sample}`)
   console.log(`    with creditCardMetadata    : ${withCardMetadata}`)
   console.log(`    in installments (>1)       : ${withInstallments}`)
   console.log(`    with paymentData (PIX/TED) : ${withPaymentData}`)

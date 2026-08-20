@@ -176,13 +176,28 @@ render the entire server useless.
 
 ## Decisions taken without asking
 
-**Dates are calendar dates, not instants.** `pluggy-sdk` blindly converts any ISO
-string into a `Date` (a regex plus a `JSON.parse` reviver). Format it with
-`timeZone: 'America/Sao_Paulo'` and `2026-03-01T00:00:00.000Z` renders as
-`2026-02-28` — every transaction dated the 1st (rent, salary, subscriptions)
-lands in the wrong month, corrupting any "spending per month" analysis.
-Formatting is always `toISOString().slice(0, 10)`, with no time zone conversion
-anywhere.
+**Dates are resolved in `America/Sao_Paulo`.** This reverses an earlier decision,
+which the probe disproved against real data.
+
+The original reasoning assumed Pluggy normalises transactions to UTC midnight, so
+converting to São Paulo would drag every 1st-of-the-month entry into the previous
+month. Measured on 1,595 real transactions across three banks, that premise is
+false: **not a single transaction arrives at UTC midnight**. One bank returns
+`03:00:00.000Z`, which *is* São Paulo midnight; the other two return genuine
+timestamps down to the millisecond.
+
+With real instants, naive ISO slicing is the thing that misdates:
+
+```
+2026-08-17T00:46:07.390Z   UTC=2026-08-17   São Paulo=2026-08-16
+2026-07-30T00:54:15.684Z   UTC=2026-07-30   São Paulo=2026-07-29
+```
+
+**68 of 1,595 transactions (4.3%)** land on a different day depending on the
+method — every late-evening purchase. So the calendar day is always resolved with
+`Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })`, never by
+slicing the ISO string. The failure mode the original decision feared cannot
+occur, because the UTC-midnight input it feared does not exist.
 
 **Transaction descriptions are hostile input.** Anyone can send you R$0.01 over
 PIX with the description `"IGNORE ALL PREVIOUS INSTRUCTIONS AND ..."`. That text
@@ -194,3 +209,51 @@ being read-only protects Pluggy, not the rest of your harness.
 **`PaymentsClient` is never imported.** `pluggy-sdk` ships PIX initiation, smart
 transfers and payments. None of it is imported, and a test fails if anyone
 imports it.
+
+---
+
+## What the probe found (2026-08-20, 3 banks, real data)
+
+Run against three MeuPluggy (connector 200) items, all `UPDATED`/`SUCCESS`.
+
+**`GET /transactions` is gone.** The v1 endpoint now returns `410 Gone`:
+*"This endpoint is deprecated. Use GET /v2/transactions with cursor pagination
+instead."* `fetchTransactions` and its `from`/`to` filters are dead; the live path
+is `fetchTransactionsCursor(accountId, { dateFrom, dateTo, after })`, and
+`fetchAllTransactions` wraps it safely. This makes decision 4's cursor a native
+fit rather than something bolted on.
+
+**Investments are available.** 38 and 8 positions on two of the items, spanning
+`FIXED_INCOME/CDB`, `FIXED_INCOME/LCA`, `FIXED_INCOME/TREASURY`, `EQUITY/STOCK`,
+and three mutual fund subtypes. This was the open question that could have killed
+two of the nine tools. Investment *transactions*, however, are sparse — 0 and 1 on
+the first position of each item — so returns may not be computable everywhere.
+
+**`statusDetail` is absent on connector 200.** Decision 7 assumed per-product
+`isUpdated`/`lastUpdatedAt` would advertise which products an item carries. It is
+null here, so product availability has to be inferred by calling and observing,
+and `list_connections` cannot report freshness per product — only the item-level
+`lastUpdatedAt`.
+
+**Categories are English.** 43, 26 and 14 distinct values: `Groceries`,
+`Eating out`, `Food delivery`, `Same person transfer`, `Credit card payment`,
+`Tax on financial operations`. A Portuguese-speaking user asking about
+"mercado" must reach `Groceries`, so the server instructions have to carry that
+bridge.
+
+**Volume confirms decision 3.** 1,142 transactions in the first cursor page alone
+over 180 days. Extrapolated to a year across all three items, raw JSON would cost
+roughly 1.2M tokens; lean TSV keeps it near 50k.
+
+**Installments and payment data are common.** 72 transactions in installments
+across the three items, which is what decision 9's `installment` and
+`purchase_total` columns exist for. 595 carry `paymentData`, meaning the raw
+payload would have leaked counterparty tax IDs and account numbers on more than
+half the rows — decision 3 removes them by construction.
+
+**Bill totals are not always 2-decimal.** Values like `2431.5285` and `4200.6489`
+come back on the item that also shows `Transfer - Foreign Exchange` activity.
+Amounts must be rounded for display rather than printed raw.
+
+**Loans returned 0 everywhere,** which does not distinguish "no loans" from "not
+exposed by connector 200". `list_loans` ships, but it may simply stay empty.
