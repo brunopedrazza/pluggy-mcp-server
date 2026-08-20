@@ -1,7 +1,7 @@
 {
   "name": "pluggy-mcp-server",
   "version": "0.1.0",
-  "description": "MCP server read-only para dados financeiros pessoais via Pluggy (Meu Pluggy / Conector 200), self-hosted.",
+  "description": "Read-only MCP server for personal financial data via Pluggy (Meu Pluggy / Connector 200), self-hosted.",
   "type": "module",
   "license": "MIT",
   "engines": { "node": ">=22.6" },

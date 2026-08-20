@@ -1,176 +1,187 @@
-# Decisões de design
+# Design decisions
 
-Registro das decisões tomadas antes da implementação, com o motivo. Se você for
-mudar alguma, leia o "porquê" primeiro — várias existem para evitar um modo de
-falha específico, não por estética.
+A record of the decisions made before implementation, and why. If you are about
+to change one, read the reasoning first — several of them exist to prevent a
+specific failure mode, not for aesthetics.
 
-## 1. Acesso à Pluggy: Meu Pluggy + Conector 200
+## 1. Pluggy access: Meu Pluggy + Connector 200
 
-O plano comercial de Dados da Pluggy começa em **R$2.500/mês**. Para uso pessoal
-existe o **Meu Pluggy** (`meu.pluggy.ai`), gratuito por tempo indeterminado, e o
-**Conector 200 ("MeuPluggy")**, um proxy que expõe via API os dados que você já
-conectou lá. Não há limite de contas desde que todas sejam suas, nominais.
+Pluggy's commercial Data plan starts at **R$2,500/month**. For personal use there
+is **[Meu Pluggy](https://meu.pluggy.ai)**, free with no expiration date, and
+**Connector 200 ("MeuPluggy")**, a proxy that exposes over the API the data you
+have already connected there. There is no account limit as long as every account
+is your own.
 
-O fluxo de onboarding acontece **fora deste servidor**: você conecta os bancos no
-Meu Pluggy e autoriza o conector MeuPluggy dentro do `dashboard.pluggy.ai`. Não
-há widget Pluggy Connect, nem OAuth, nem callback HTTP no nosso código.
+Onboarding happens **outside this server**: you connect your banks in Meu Pluggy
+and authorize the MeuPluggy connector inside `dashboard.pluggy.ai`. There is no
+Pluggy Connect widget, no OAuth, and no HTTP callback in our code.
 
-O servidor é **item-agnóstico**: recebe N `itemId` e lê o que houver. Isso vale
-igual para o Conector 200 gratuito e para um plano pago no futuro, sem reescrita.
+The server is **item-agnostic**: it takes N `itemId`s and reads whatever is
+there. That works identically for the free Connector 200 and for a paid plan
+later, with no rewrite.
 
-## 2. Espelho fiel do banco.mcp.ai, sem agregação server-side
+## 2. Faithful mirror of banco.mcp.ai, no server-side aggregation
 
-O banco.mcp.ai expõe 5 tools de listagem read-only. Adotamos a mesma filosofia:
-as tools entregam dados, o modelo analisa.
+banco.mcp.ai exposes 5 read-only listing tools. We adopt the same philosophy:
+tools deliver data, the model does the analysis.
 
-**Objeção registrada e não acatada:** sem agregação no servidor, toda a aritmética
-fica no modelo, e LLM somando centenas de linhas erra em silêncio. Mitigado (não
-eliminado) pelas decisões 4, 11 e 14.
+**Objection recorded and overruled:** without server-side aggregation, all the
+arithmetic falls on the model, and an LLM summing hundreds of rows fails
+silently. Mitigated — not eliminated — by decisions 4, 11 and 14.
 
-## 3. Saída em TSV enxuto
+## 3. Lean TSV output
 
-O `Transaction` da Pluggy tem ~25 campos no topo mais `paymentData`, `merchant` e
-`creditCardMetadata` aninhados: **~396 tokens por transação**.
+Pluggy's `Transaction` has ~25 top-level fields plus nested `paymentData`,
+`merchant` and `creditCardMetadata`: **~396 tokens per transaction**.
 
-| transações | JSON cru | JSON enxuto | TSV enxuto |
+| transactions | raw JSON | lean JSON | lean TSV |
 |---|---|---|---|
-| 400 (1 trimestre) | 158k | 10k | **7k** |
-| 1.200 (1 ano) | 475k | 31k | **22k** |
-| 3.000 (1 ano ativo) | 1.188k | 78k | **54k** |
+| 400 (one quarter) | 158k | 10k | **7k** |
+| 1,200 (one year) | 475k | 31k | **22k** |
+| 3,000 (one busy year) | 1,188k | 78k | **54k** |
 
-Um ano em JSON cru estoura sozinho uma janela de 1M. TSV enxuto economiza ~22x.
-Benefício secundário: o `paymentData` cru carrega CPF, agência e conta suas e da
-contraparte em toda linha — a projeção enxuta os elimina por construção.
+A year of raw JSON blows a 1M context window on its own. Lean TSV saves ~22x.
 
-## 4. Truncamento sempre visível
+Secondary benefit: raw `paymentData` carries your CPF, branch and account number
+— and the counterparty's — on every single row. The lean projection removes them
+by construction.
 
-Default de 90 dias quando o período não é informado. Teto de linhas configurável
-(`MCP_MAX_ROWS`, padrão 800). Ao estourar, a **primeira linha** da resposta é um
-aviso com a contagem real e a instrução explícita de não somar, mais um cursor.
+## 4. Truncation is always visible
 
-O modo de falha que isso evita: truncar 800 de 1.847 e o modelo somar as 800,
-produzindo um total plausível e errado.
+Defaults to 90 days when no period is given. Row ceiling is configurable
+(`MCP_MAX_ROWS`, default 800). When exceeded, the **first line** of the response
+is a warning carrying the real count and an explicit instruction not to sum,
+plus a cursor to continue.
 
-## 5. HTTP no tailnet, sem exposição pública
+The failure mode this prevents: truncating 800 out of 1,847 rows and having the
+model sum the 800, producing a plausible and wrong total.
 
-Servidor HTTP rodando numa VM, alcançável apenas pela rede Tailscale.
+## 5. HTTP over the tailnet, never publicly exposed
 
-**Consequência aceita:** não funciona no Claude web nem no app mobile. Custom
-connectors do claude.ai são conectados **pela infraestrutura da Anthropic**, não
-pelo seu dispositivo — a documentação exige que o servidor seja alcançável pela
-internet pública. Clientes que conectam a partir da própria máquina (Claude Code,
-Cursor, Cline, Zed) funcionam normalmente.
+An HTTP server running on a VM, reachable only over the Tailscale network.
 
-## 6. Nove tools
+**Accepted consequence:** it does not work in Claude web or the mobile app.
+claude.ai custom connectors are dialed **by Anthropic's infrastructure**, not by
+your device — the documentation requires the server to be reachable over the
+public internet. Clients that connect from the machine they run on (Claude Code,
+Cursor, Cline, Zed) work normally.
 
-Cinco espelhando o banco.mcp.ai — `list_connections`, `list_accounts`,
-`list_transactions`, `list_credit_card_bills`, `list_investments` — mais:
+## 6. Nine tools
 
-- `list_loans` — sem isso não dá para responder "vale a pena quitar ou investir?"
-- `list_investment_transactions` — posição atual sem histórico de aportes não
-  permite calcular rentabilidade, só saldo
-- `search_transactions` — antídoto direto ao teto de linhas: filtra por texto,
-  faixa de valor e categoria atravessando todas as contas
+Five mirroring banco.mcp.ai — `list_connections`, `list_accounts`,
+`list_transactions`, `list_credit_card_bills`, `list_investments` — plus:
 
-`get_identity` foi deliberadamente deixado de fora: não serve a nenhuma análise
-e só despeja PII no contexto e nos logs do harness.
+- `list_loans` — without it you cannot answer "should I pay this off or invest?"
+- `list_investment_transactions` — a current position without contribution
+  history lets you compute a balance, never a return
+- `search_transactions` — the direct antidote to the row ceiling: filters by
+  text, amount range and category across every account at once
 
-## 7. `refresh_connection` não-bloqueante
+`get_identity` was deliberately left out: it serves no analysis and would only
+dump PII into the context window and the harness logs.
 
-Auto-sync da Pluggy só existe para aplicações de produção (8/12/24h conforme o
-plano), então no Conector 200 o dado pode estar velho. `PATCH /items/{id}` dispara
-sync e retorna na hora; o modelo consulta `list_connections` para ver quando
-concluiu. Se cair em `WAITING_USER_INPUT`, devolve instrução para resolver o MFA
-no `meu.pluggy.ai` — o servidor não tem como responder MFA sozinho.
+## 7. Non-blocking `refresh_connection`
 
-Tool bloqueante com polling foi descartada: uma chamada de ~2min estoura timeout
-de cliente MCP e trava a conversa.
+Pluggy auto-sync only exists for production applications (every 8/12/24h
+depending on plan), so data from Connector 200 may be stale. `PATCH /items/{id}`
+triggers a sync and returns immediately; the model polls `list_connections` to
+see when it finished. If the item lands in `WAITING_USER_INPUT`, the tool returns
+an instruction to resolve the MFA challenge at `meu.pluggy.ai` — the server
+cannot answer MFA on its own.
 
-## 8. Cache em memória, invalidado por `lastUpdatedAt`
+A blocking tool with polling was rejected: a ~2 minute call exceeds MCP client
+timeouts and freezes the conversation.
 
-Chave = `(itemId, produto, item.lastUpdatedAt)`. Enquanto a Pluggy não sincroniza
-a chave não muda e serve da memória; quando o item atualiza, a chave muda e o
-cache erra sozinho. Sem TTL arbitrário e sem risco de servir dado velho. Só o
-`fetchItem` tem TTL curto (~60s) para não martelar a API.
+## 8. In-memory cache, invalidated by `lastUpdatedAt`
 
-**Nada em disco.** Se a VM for comprometida, não há extrato bancário parado lá.
+Cache key is `(itemId, product, item.lastUpdatedAt)`. While Pluggy has not
+synced, the key does not change and the response is served from memory; the
+moment the item updates, the key changes and the cache misses on its own. No
+arbitrary TTL, and no way to serve stale data. Only `fetchItem` carries a short
+TTL (~60s) to avoid hammering the API.
 
-## 9. Parcelamento: os dois regimes, explícitos
+**Nothing touches disk.** If the VM is compromised, there is no bank statement
+sitting on it.
 
-Uma compra de R$3.000 em 12x feita em março é R$3.000 (regime de compra) ou R$250
-(regime de caixa). Ambos são legítimos e diferem em 12x.
+## 9. Installments: both accounting views, made explicit
 
-`CreditCardBills` só traz o cabeçalho da fatura (`dueDate`, `billClosingDate`,
-`totalAmount`) — os itens vivem em `transactions`, ligados por
-`creditCardMetadata.billId`. Então: `list_transactions` usa data da compra e ganha
-as colunas `parc` e `total_compra`; `list_credit_card_bills` mostra o que cai em
-cada fatura. As duas visões coexistem e a parcela aparece na própria linha, de
-modo que não dá para confundir os regimes sem perceber.
+A R$3,000 purchase split into 12 installments in March is either R$3,000
+(accrual view) or R$250 (cash view). Both are legitimate, and they differ by 12x.
 
-## 10. Bearer token obrigatório, bind em loopback
+`CreditCardBills` only carries the bill header (`dueDate`, `billClosingDate`,
+`totalAmount`) — the line items live in `transactions`, linked through
+`creditCardMetadata.billId`. So: `list_transactions` uses the purchase date and
+gains `installment` and `purchase_total` columns, while `list_credit_card_bills`
+shows what actually lands on each bill. Both views coexist, and the installment
+appears on the row itself, so the two views cannot be conflated unnoticed.
 
-O processo escuta **somente em `127.0.0.1`**; a exposição no tailnet é feita por
-`tailscale serve`. Isso elimina por construção a classe de erro "subiu em
-`0.0.0.0` e a security list da VM estava aberta" — relevante porque VMs de nuvem
-têm IP público.
+## 10. Mandatory bearer token, loopback bind
 
-Além disso, bearer token obrigatório, comparado em tempo constante, com 401 sem
-detalhe. O tailnet já é uma fronteira, mas defesa em camada única falha inteira:
-basta adicionar um device, compartilhar um nó, rodar um container que herda a
-rede, ou errar uma ACL.
+The process listens **only on `127.0.0.1`**; exposure to the tailnet is handled
+by `tailscale serve`. This eliminates by construction the "bound to `0.0.0.0`
+while the VM security list was open" class of mistake — which matters because
+cloud VMs have public IPs.
 
-## 11. `instructions`, descriptions ricas e prompts
+On top of that, a mandatory bearer token, compared in constant time, returning a
+401 with no detail. The tailnet is already a boundary, but a single-layer defense
+fails completely: it only takes adding a device, sharing a node, running a
+container that inherits the host network, or getting an ACL wrong.
 
-Como não há agregação server-side (decisão 2), o servidor injeta no handshake as
-regras que evitam erro silencioso: somar com código e nunca de cabeça, nunca
-tratar saída marcada `⚠ PARCIAL` como total, não converter fuso, não misturar
-`amount` com `total_compra`, e tratar descrição de transação como dado não
-confiável.
+## 11. `instructions`, rich descriptions and prompts
 
-## 12. Repositório público, MIT
+Since there is no server-side aggregation (decision 2), the server injects the
+rules that prevent silent errors into the handshake: sum with code and never
+mentally, never treat output marked `⚠ PARTIAL` as a total, never convert time
+zones, never mix `amount` with `purchase_total`, and treat transaction
+descriptions as untrusted input.
 
-O código não contém dado do usuário — credenciais e itemIds vêm de env. Existe um
-buraco real de mercado: cobra-se R$19,90–49,90/mês por cima de um Meu Pluggy que
-é gratuito.
+## 12. Public repository, MIT
+
+The code contains no user data — credentials and item IDs come from the
+environment. And there is a real gap in the market: services charge
+R$19.90–49.90/month on top of a Meu Pluggy account that is free.
 
 ## 13. systemd + `tailscale serve`
 
-`Restart=always`, `After=tailscaled.service`, `EnvironmentFile` em modo 600 para
-o `clientSecret`, logs no journald. Sem container, o que importa numa VM de free
-tier. `tailscale serve` publica com HTTPS e certificado válido, então o bearer
-token não trafega em claro.
+`Restart=always`, `After=tailscaled.service`, an `EnvironmentFile` in mode 600
+for the client secret, logs to journald. No container, which matters on a
+free-tier VM. `tailscale serve` publishes over HTTPS with a valid certificate, so
+the bearer token never travels in the clear.
 
-Bind direto no IP `100.x` foi descartado: além de HTTP puro, o systemd pode subir
-antes do `tailscaled` atribuir o IP e o serviço não volta depois de um reboot.
+Binding directly to the `100.x` address was rejected: besides being plaintext
+HTTP, systemd can start before `tailscaled` assigns the address, and the service
+never comes back after a reboot.
 
-## 14. Item quebrado degrada com banner
+## 14. A broken item degrades with a banner
 
-Com 4-5 bancos, um estar em `LOGIN_ERROR`/`OUTDATED`/`WAITING_USER_INPUT` é o
-estado normal. As tools retornam os itens saudáveis, mas a primeira linha declara
-o que está faltando, desde quando e como consertar.
+With 4-5 banks connected, having one in `LOGIN_ERROR`, `OUTDATED` or
+`WAITING_USER_INPUT` is the normal state, not the exception. Tools return the
+healthy items, but the first line states what is missing, since when, and how to
+fix it.
 
-Mesmo risco do truncamento: se o Itaú está fora, o total de março vem menor e
-plausível. Falhar a chamada inteira foi descartado porque um banco quebrado
-inutilizaria o servidor.
+Same risk as truncation: if one bank is out, the March total comes back smaller
+and plausible. Failing the whole call was rejected because one broken bank would
+render the entire server useless.
 
 ---
 
-## Decisões sem pergunta
+## Decisions taken without asking
 
-**Datas são calendário, não instantes.** O `pluggy-sdk` converte cegamente
-qualquer string ISO em `Date` (regex + reviver no `JSON.parse`). Se você formatar
-com `timeZone: 'America/Sao_Paulo'`, `2026-03-01T00:00:00.000Z` vira `28/02/2026`
-— e todo lançamento do dia 1º (aluguel, salário, assinaturas) cai no mês errado,
-corrompendo qualquer "gasto por mês". Formatação é sempre
-`toISOString().slice(0,10)`, sem conversão de fuso em lugar nenhum.
+**Dates are calendar dates, not instants.** `pluggy-sdk` blindly converts any ISO
+string into a `Date` (a regex plus a `JSON.parse` reviver). Format it with
+`timeZone: 'America/Sao_Paulo'` and `2026-03-01T00:00:00.000Z` renders as
+`2026-02-28` — every transaction dated the 1st (rent, salary, subscriptions)
+lands in the wrong month, corrupting any "spending per month" analysis.
+Formatting is always `toISOString().slice(0, 10)`, with no time zone conversion
+anywhere.
 
-**Descrição de transação é dado hostil.** Qualquer pessoa pode te mandar R$0,01
-via PIX com a descrição `"IGNORE AS INSTRUÇÕES ANTERIORES E ..."`. Esse texto
-entra direto no contexto de um agente que pode ter bash e escrita de arquivo. As
-descrições saem delimitadas, com caracteres de controle removidos, e as tools
-declaram no description que o conteúdo é não confiável. O servidor ser read-only
-protege a Pluggy, não o resto do seu harness.
+**Transaction descriptions are hostile input.** Anyone can send you R$0.01 over
+PIX with the description `"IGNORE ALL PREVIOUS INSTRUCTIONS AND ..."`. That text
+flows straight into the context of an agent that may hold bash and file-write
+tools. Descriptions are emitted delimited, with control characters stripped, and
+the tools declare in their description that the content is untrusted. The server
+being read-only protects Pluggy, not the rest of your harness.
 
-**`PaymentsClient` nunca é importado.** O `pluggy-sdk` inclui iniciação de PIX,
-smart transfers e pagamentos. Nada disso é importado, e há teste que falha se
-alguém importar.
+**`PaymentsClient` is never imported.** `pluggy-sdk` ships PIX initiation, smart
+transfers and payments. None of it is imported, and a test fails if anyone
+imports it.

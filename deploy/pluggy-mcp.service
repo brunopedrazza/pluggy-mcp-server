@@ -1,5 +1,5 @@
 [Unit]
-Description=Pluggy MCP Server (read-only, dados financeiros pessoais)
+Description=Pluggy MCP Server (read-only personal financial data)
 Documentation=https://github.com/brunopedrazza/pluggy-mcp-server
 After=network-online.target tailscaled.service
 Wants=network-online.target
@@ -14,7 +14,7 @@ EnvironmentFile=/etc/pluggy-mcp/env
 Restart=always
 RestartSec=5
 
-# O processo so escuta em loopback; nada aqui deve expor porta externamente.
+# The process listens on loopback only; nothing here should expose a port.
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -28,7 +28,7 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-# Cache e' em memoria: o servico nao precisa escrever em disco.
+# The cache is in memory: the service never needs to write to disk.
 ReadWritePaths=
 
 [Install]

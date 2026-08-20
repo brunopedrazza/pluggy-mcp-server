@@ -1,65 +1,64 @@
 # pluggy-mcp-server
 
-MCP server **read-only** que expõe seus dados financeiros pessoais (Open Finance
-Brasil, via [Pluggy](https://pluggy.ai)) para qualquer cliente MCP — Claude Code,
+A **read-only** MCP server that exposes your personal financial data (Brazilian
+Open Finance, via [Pluggy](https://pluggy.ai)) to any MCP client — Claude Code,
 Cursor, Cline, Zed.
 
-Alternativa self-hosted a serviços pagos de "banco no MCP": o
-[Meu Pluggy](https://meu.pluggy.ai) é **gratuito por tempo indeterminado** para
-pessoa física acessar os próprios dados via API.
+A self-hosted alternative to paid "bank over MCP" services:
+[Meu Pluggy](https://meu.pluggy.ai) is **free with no expiration date** for
+individuals accessing their own data over the API.
 
-**Sem movimentação de dinheiro.** Não há PIX, transferência ou pagamento. O
-`PaymentsClient` do SDK da Pluggy nunca é importado, e há teste que falha se
-alguém importar.
+**No money movement.** There is no PIX, no transfer, no payment. Pluggy's
+`PaymentsClient` is never imported, and a test fails if anyone imports it.
 
 ## Tools
 
-| Tool | O que faz |
+| Tool | What it does |
 |---|---|
-| `list_connections` | Conexões, status e frescor do dado por produto |
-| `list_accounts` | Contas correntes, poupanças e cartões, com saldo |
-| `list_transactions` | Extrato em TSV, com parcela e valor cheio da compra |
-| `search_transactions` | Busca por texto, faixa de valor e categoria, entre contas |
-| `list_credit_card_bills` | Faturas: vencimento, fechamento, total, pagamentos |
-| `list_investments` | Posição atual da carteira |
-| `list_investment_transactions` | Aportes e resgates, para calcular rentabilidade |
-| `list_loans` | Empréstimos e financiamentos: saldo devedor, juros, parcelas |
-| `refresh_connection` | Dispara sync na Pluggy (não bloqueante) |
+| `list_connections` | Connections, status, and data freshness per product |
+| `list_accounts` | Checking, savings and credit card accounts, with balances |
+| `list_transactions` | Statement as TSV, including installment and full purchase amount |
+| `search_transactions` | Search by text, amount range and category, across accounts |
+| `list_credit_card_bills` | Bills: due date, closing date, total, payments |
+| `list_investments` | Current portfolio positions |
+| `list_investment_transactions` | Contributions and withdrawals, to compute returns |
+| `list_loans` | Loans and financing: outstanding balance, rates, installments |
+| `refresh_connection` | Triggers a Pluggy sync (non-blocking) |
 
 ## Setup
 
-### 1. Conectar seus bancos (uma vez, ~15 min)
+### 1. Connect your banks (once, ~15 min)
 
-1. Crie conta em [meu.pluggy.ai](https://meu.pluggy.ai) e conecte seus bancos
-2. Crie conta em [dashboard.pluggy.ai](https://dashboard.pluggy.ai)
-3. Crie **uma** aplicação e copie `Client ID` e `Client Secret`
-4. Na aplicação, escolha o conector **MeuPluggy** e autorize com seu login do Meu Pluggy
-5. Copie o **Item ID** (botão "Copiar Item ID")
+1. Create an account at [meu.pluggy.ai](https://meu.pluggy.ai) and connect your banks
+2. Create an account at [dashboard.pluggy.ai](https://dashboard.pluggy.ai)
+3. Create **one** application and copy its `Client ID` and `Client Secret`
+4. In that application, pick the **MeuPluggy** connector and authorize it with your Meu Pluggy login
+5. Copy the **Item ID** ("Copiar Item ID" button)
 
-### 2. Verificar o que o Conector 200 entrega
+### 2. Check what Connector 200 actually returns
 
 ```bash
-cp .env.example .env   # preencha CLIENT_ID, CLIENT_SECRET e ITEM_IDS
+cp .env.example .env   # fill in CLIENT_ID, CLIENT_SECRET and ITEM_IDS
 npm install
 npm run probe
 ```
 
-A sonda responde se investimentos, faturas e empréstimos estão disponíveis nas
-suas conexões, e valida o tratamento de datas e categorias. Ela **não** imprime
-número de conta, CPF nem descrição de transação.
+The probe reports whether investments, credit card bills and loans are available
+on your connections, and validates date and category handling. It does **not**
+print account numbers, tax IDs, or transaction descriptions.
 
-### 3. Rodar
+### 3. Run
 
 ```bash
 npm run build
 npm start
 ```
 
-## Deploy (VM + Tailscale)
+## Deployment (VM + Tailscale)
 
-O processo escuta **somente em loopback**. A exposição é feita pelo Tailscale,
-nunca por bind em `0.0.0.0` — VMs de nuvem têm IP público, e um bind errado
-somado a uma security list aberta coloca seu extrato bancário na internet.
+The process listens **on loopback only**. Exposure is handled by Tailscale, never
+by binding to `0.0.0.0` — cloud VMs have public IPs, and a wrong bind combined
+with an open security list puts your bank statement on the internet.
 
 ```bash
 sudo cp deploy/pluggy-mcp.service /etc/systemd/system/
@@ -70,22 +69,22 @@ sudo systemctl enable --now pluggy-mcp
 tailscale serve --bg --https=443 127.0.0.1:8787
 ```
 
-### Conectar o cliente
+### Connect a client
 
 ```bash
 claude mcp add pluggy --transport http \
   --header "Authorization: Bearer $MCP_BEARER_TOKEN" \
-  https://SUA-VM.SEU-TAILNET.ts.net/mcp
+  https://YOUR-VM.YOUR-TAILNET.ts.net/mcp
 ```
 
-> Não funciona no Claude web nem no app mobile: custom connectors do claude.ai
-> são conectados pela infraestrutura da Anthropic, que não alcança um tailnet
-> privado. Clientes que conectam da própria máquina funcionam normalmente.
+> This does not work in Claude web or the mobile app: claude.ai custom connectors
+> are dialed by Anthropic's infrastructure, which cannot reach a private tailnet.
+> Clients that connect from the machine they run on work normally.
 
 ## Design
 
-As decisões e o motivo de cada uma estão em [DESIGN.md](./DESIGN.md).
+Every decision and its reasoning is in [DESIGN.md](./DESIGN.md).
 
-## Licença
+## License
 
 MIT
