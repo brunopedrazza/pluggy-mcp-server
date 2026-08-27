@@ -7,6 +7,7 @@ import * as z from 'zod'
 
 import type { CreditCardBills } from 'pluggy-sdk'
 
+import { suspectDuplicates } from '../pluggy/duplicates.ts'
 import { money } from '../money.ts'
 import { sanitize } from '../redact.ts'
 import { capRows, renderTsv } from '../tsv.ts'
@@ -105,10 +106,25 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
     async ({ connection, type }) => {
       const { healthy, missing } = await ctx.store.resolve(connection)
       const rows: (string | number)[][] = []
+      const suspects: string[] = []
+      let collapsed = 0
 
       for (const c of healthy) {
-        for (const investment of await ctx.store.investments(c)) {
-          if (type && investment.type !== type.toUpperCase()) continue
+        const holdings = (await ctx.store.investments(c)).filter(
+          (investment) => !type || investment.type === type.toUpperCase(),
+        )
+        collapsed += ctx.store.collapsedInvestments(c)
+        for (const group of suspectDuplicates(holdings)) {
+          const why =
+            group.reason === 'identical-figures'
+              ? 'quantidade, preco unitario e saldo identicos em papeis diferentes - o mercado nao produz isso'
+              : 'mesmo papel, quantidade, vencimento e taxa'
+          suspects.push(
+            `  - ${sanitize(group.name, 44)} (${c.label}): ${group.count} linhas somando ` +
+              `${money(group.balance)} ${holdingCurrency(group.currency)} - ${why}`,
+          )
+        }
+        for (const investment of holdings) {
           rows.push([
             sanitize(investment.name, 44),
             `${investment.type}/${investment.subtype ?? '-'}`,
@@ -123,11 +139,35 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
         }
       }
 
+      // Both notes exist because a position quietly appearing twice - or quietly
+      // being dropped - moves a net-worth figure by tens of thousands without
+      // looking wrong. The reader is told either way.
+      const notes: string[] = []
+      if (collapsed > 0) {
+        notes.push(
+          `Nota: ${collapsed} posicao(oes) duplicada(s) removida(s). O conector reemite uma posicao sob um id ` +
+            `novo sem aposentar a antiga; as linhas removidas eram identicas campo a campo a uma linha exibida, ` +
+            `e os saldos abaixo ja as excluem.`,
+        )
+      }
+      if (suspects.length > 0) {
+        notes.push(
+          [
+            `ATENCAO: posicoes possivelmente duplicadas, com ids diferentes. Elas ESTAO somadas abaixo e ` +
+              `podem inflar o total:`,
+            ...suspects,
+            `Comparar com o app do banco resolve; comprar duas vezes a mesma quantidade do mesmo papel tambem ` +
+              `produz este padrao, entao nao descarte nenhuma linha sem checar.`,
+          ].join('\n'),
+        )
+      }
+
       const { rows: capped, truncated } = capRows(rows, ctx.config.maxRows)
       return text(
         renderTsv(INVESTMENT_HEADERS, capped, {
           truncated,
           missing,
+          notes: notes.length > 0 ? notes : undefined,
         }),
       )
     },
