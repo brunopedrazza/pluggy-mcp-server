@@ -17,6 +17,7 @@ import type { Account, CreditCardBills, Investment, Item, Loan, Transaction } fr
 import type { Config } from '../config.ts'
 import type { MissingConnection } from '../tsv.ts'
 import { Cache } from './cache.ts'
+import { collapseDuplicates } from './duplicates.ts'
 import { buildAccountLabels, deriveBankName } from './labels.ts'
 
 /** Statuses in which an item's data is trustworthy enough to report. */
@@ -50,6 +51,8 @@ export class PluggyStore {
   #config: Config
   #client: PluggyClient
   #cache = new Cache()
+  /** Copies dropped by the last investment fetch, per item; see duplicates.ts. */
+  #collapsedInvestments = new Map<string, number>()
 
   constructor(config: Config, client?: PluggyClient) {
     this.#config = config
@@ -183,13 +186,36 @@ export class PluggyStore {
     )
   }
 
+  /**
+   * Current positions, with re-emitted copies collapsed.
+   *
+   * The collapse happens here rather than in the tool so that every consumer
+   * sees the same set: `list_investment_transactions` walks positions too, and a
+   * duplicated position would otherwise replay its movements twice.
+   */
   async investments(connection: Connection): Promise<Investment[]> {
     const stamp = this.#stamp(connection)
     return this.#cache.through(
       `${connection.itemId}:investments:${stamp}`,
-      async () => (await this.#client.fetchInvestments(connection.itemId)).results,
+      async () => {
+        const fetched = (await this.#client.fetchInvestments(connection.itemId)).results
+        const { kept, removed } = collapseDuplicates(fetched)
+        this.#collapsedInvestments.set(connection.itemId, removed.length)
+        return kept
+      },
       { versionPrefix: `${connection.itemId}:investments:` },
     )
+  }
+
+  /**
+   * How many identical copies `investments()` dropped for this connection.
+   *
+   * Reported to the caller rather than kept quiet: rows vanishing between Pluggy
+   * and an answer is exactly the kind of silent adjustment this server owes the
+   * reader an account of.
+   */
+  collapsedInvestments(connection: Connection): number {
+    return this.#collapsedInvestments.get(connection.itemId) ?? 0
   }
 
   async investmentTransactions(connection: Connection, investmentId: string) {
