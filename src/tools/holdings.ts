@@ -8,6 +8,7 @@ import * as z from 'zod'
 import type { CreditCardBills } from 'pluggy-sdk'
 
 import { suspectDuplicates } from '../pluggy/duplicates.ts'
+import { zeroedDespitePurchases } from '../pluggy/zeroed.ts'
 import { money } from '../money.ts'
 import { sanitize } from '../redact.ts'
 import { capRows, renderTsv } from '../tsv.ts'
@@ -107,6 +108,7 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
       const { healthy, missing } = await ctx.store.resolve(connection)
       const rows: (string | number)[][] = []
       const suspects: string[] = []
+      const zeroed: string[] = []
       let collapsed = 0
 
       for (const c of healthy) {
@@ -123,6 +125,18 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
             `  - ${sanitize(group.name, 44)} (${c.label}): ${group.count} linhas somando ` +
               `${money(group.balance)} ${holdingCurrency(group.currency)} - ${why}`,
           )
+        }
+        // Only zeroed rows are checked, so this costs nothing on a live portfolio
+        // and the store answers from the sync's cache after the first call.
+        for (const investment of holdings.filter((i) => (i.balance ?? 0) === 0)) {
+          const movements = await ctx.store.investmentTransactions(c, investment.id)
+          const contradiction = zeroedDespitePurchases(investment, movements)
+          if (contradiction) {
+            zeroed.push(
+              `  - ${sanitize(contradiction.name, 44)} (${c.label}): compras de ` +
+                `${money(contradiction.purchased)} ${holdingCurrency(contradiction.currency)} sem venda correspondente`,
+            )
+          }
         }
         for (const investment of holdings) {
           rows.push([
@@ -158,6 +172,18 @@ export function registerHoldingTools(server: McpServer, ctx: ToolContext): void 
             ...suspects,
             `Comparar com o app do banco resolve; comprar duas vezes a mesma quantidade do mesmo papel tambem ` +
               `produz este padrao, entao nao descarte nenhuma linha sem checar.`,
+          ].join('\n'),
+        )
+      }
+
+      if (zeroed.length > 0) {
+        notes.push(
+          [
+            `ATENCAO: posicao(oes) com saldo zero que a propria instituicao contradiz - ela reportou compras e ` +
+              `nenhuma venda contra elas. Valem mais que zero e NAO estao somadas abaixo, entao o total esta ` +
+              `menor que o real:`,
+            ...zeroed,
+            `O valor mostrado e o que foi pago, nao quanto vale hoje - confirme no app antes de usar como saldo.`,
           ].join('\n'),
         )
       }
