@@ -211,6 +211,96 @@ Same risk as truncation: if one bank is out, the March total comes back smaller
 and plausible. Failing the whole call was rejected because one broken bank would
 render the entire server useless.
 
+## 15. Duplicated positions: collapse the provable, flag the ambiguous
+
+Connector 200 re-emits an investment position under a fresh `id` on some syncs
+and never retires the old row. Both banks holding investments were carrying one:
+a prefixed treasury bond duplicated eight days apart on one item, and an
+inflation-linked one duplicated *one second* apart during another item's first
+sync. Together they added about 8% to the reported portfolio — positions that do
+not exist, sitting inside a total that looks entirely reasonable. That is the
+failure mode this whole design is organised against.
+
+The obvious rule — **a position with no investment transactions is not real** —
+was measured and rejected. Movement history barely travels through Open Finance:
+on the larger item, 26 of 41 genuine positions holding roughly a quarter of its
+value expose none, and *both* copies of the duplicated bond expose none. That
+rule deletes a quarter of a real portfolio and still misses duplicates. An empty
+transaction list means "not reported", never "did not happen", which
+`list_investment_transactions` already tells its caller.
+
+What marks a copy is being a copy. `collapseDuplicates` drops a row identical to
+one already seen in every field except `id`, `createdAt`, `updatedAt` and `date`
+— the four that record when Pluggy looked, not what is held. `date` is in that
+set because the first-sync pair differed by one second on it. This is provable:
+no judgement is made about which of two *different* rows deserves to live.
+
+It does not catch everything. One row survives describing the same purchase as
+another, priced on a different day. Removing it means guessing, and guessing
+wrong hides money the owner holds, so `suspectDuplicates` reports it instead:
+same instrument, quantity and maturity, with `list_investments` saying so above
+the rows while still summing them.
+
+Neither the contracted rate nor the purchase date is in that signature. Both were
+tried; the apps disproved both. Two rows of the same bond differ only in rate and
+purchase date, which reads exactly like two lots bought months apart, and the app
+shows a single position. A copy carries whatever the connector stamped on it, so
+either field silences the duplicate it was added to catch. Instrument, quantity
+and maturity are enough to justify a question, and a question is all this raises.
+
+A second signature catches what the first cannot. One item reports three rows of
+the same treasury bond at identical quantity and identical unit price — across
+two ISINs, maturing six years apart. Two bonds of different maturities cannot
+share a unit price to six decimal places; no arrangement of real holdings
+produces that, so those figures were copied onto separate contract identities
+rather than observed. Matching quantity, unit price and balance across
+*different* instruments is therefore reported too.
+
+### Checked against the apps (2026-08-27)
+
+The owner read both apps, which confirmed the collapse and named what remains.
+One item shows a single prefixed bond where two identical rows were reported, so
+collapsing them was right. It also shows two inflation-linked positions of
+visibly different sizes against three rows carrying identical figures — so the
+`identical-figures` signature is not finding a duplicated *row*. The shorter-dated
+position is real and its reported balance is fiction, carrying the other row's
+numbers. A real position with copied figures is a third failure mode, distinct
+from a duplicated row and from a zeroed one, and it is why that signature warns
+about arithmetic rather than proposing a deletion.
+
+The smaller item reconciles to within a rounding of the app once the surviving
+copy is dropped and one more thing is added back: an ETF the connector reports as
+zero, which is really worth a four-figure sum. So the connector was wrong twice
+on one item, in opposite directions, and the two errors partly cancelled — the
+kind of pair that makes a total look sane while both halves are wrong.
+
+That second error is `zeroed.ts`, and it is the worse half. A duplicated row
+inflates a total, which invites a second look once someone checks; a position
+stamped `TOTAL_WITHDRAWAL` with a zero balance contributes nothing to any sum and
+renders as a harmless `0.00`. The money does not look wrong, it looks absent.
+
+It turns on evidence being present rather than absent. "No sale was reported"
+proves nothing when movement history barely travels through Open Finance, so it
+can never raise a warning; what raises one is a purchase the connector itself
+reported, unmatched by a sale of its own, against a zero balance. The four zeroed
+positions on this account separate exactly on that test: two funds report no
+movements and stay quiet, a genuinely redeemed CDB carries sales that cover its
+purchases and stays quiet, and only the ETF is raised. The warning names what was
+paid, never an estimate of what the position is worth today — inventing a current
+value from a historical trade is the quietly-wrong number this server exists to
+avoid.
+
+The larger item still does not reconcile exactly: a residual under 1% survives
+every correction above. The remaining zeroed fund was the candidate and the owner
+confirms it is genuinely empty, which its lack of any reported purchase already
+implied. Against app figures given to the nearest thousand, a sub-1% residual is
+inside the precision available, so it is left alone rather than explained by
+inventing a fourth defect.
+
+The collapse lives in the store rather than the tool, so
+`list_investment_transactions` walks the same set and cannot replay a duplicated
+position's movements twice.
+
 ---
 
 ## Decisions taken without asking
